@@ -77,3 +77,8 @@ Errors related to “lists” or “ui” likely are caused by the location of t
 
 To utilize this in a Cygwin environment, you likely will need to install Capstone from the source. There are varous ways to do so, and Capstone's documentation provides assistance. Cygwin was used during the development of the tool.
 
+##Basic Usage
+
+More detailed usage information is forthcoming. Refer to the DEF CON 27 talk and the help sub-menu for assistance.
+
+To get started though, you want to have the three Python files in the same directory: rocket.py, ui.py, and lists.py. Then run from command line. You can provide a local file in the install directory, but it will not be able to find modules/DLL's. To find these, the program must be installed, and the absolute path to the application can be supplied as input inside a text file that can be provided as an argument on the command line.
