@@ -1,15 +1,18 @@
 ![alt text](https://github.com/Bw3ll/JOP_ROCKET/blob/master/jopRocket3.jpg)
 # JOP ROCKET
 
-The Jump-oriented Programming Reversing Open Cyber Knowledge Expert Tool, or JOP ROCKET, is a tool designed to help facilitate JOP gadget discovery in an x86 Windows environment. This tool has not been released yet.  This tool will be released at DEF CON 27, where it will be the subject of a talk by Dr. Bramwell Brizendine and Dr. Josh Stroschein.
+The Jump-oriented Programming Reversing Open Cyber Knowledge Expert Tool, or JOP ROCKET, is a tool designed to help facilitate JOP gadget discovery in an x86 Windows environment. This tool has not been released yet.  This tool was released at DEF CON 27, where it was the subject of a talk by Dr. Bramwell Brizendine and Dr. Josh Stroschein.
 
-Please navigate to [https://github.com/Bw3ll/JOP_ROCKET](https://github.com/Bw3ll/JOP_ROCKET/) in order to download this tool on or after August 8, 2019. 
+Please navigate to [https://github.com/Bw3ll/JOP_ROCKET](https://github.com/Bw3ll/JOP_ROCKET/) in order to download this tool. 
 
 The tool is a Python script utilizing the Capstone disassembly enginge as well as other dependencies. This software exploitation tool is a fully featured artifact designed to facilitate Jump-oriented Programming. It is intended to be run on Windows, but can also run on any environment with the dependencies, albeit in a more limited context outside Windows. 
 
+Usage information is not available at this time beyond what is in the help menu. Constructing JOP exploits is not straightforward and is very nuanced, with some parallels but many differences from ROP. Please refer to DEF CON talk to see a brief demo.
 
+This tool has been taught at Dakota State University in the doctoral program, as part of CSC 848: Advanced Software Exploitation, the most challenging course in the program.
 
-**TOOL NOT AVAILABLE UNTIL AUGUST 8, 2019**
+Thank you to Austin Babcock for his help with various issues relating to the JOP ROCKET, including his install instructions. 
+
 
 
 ## Basic install instructions for JOP ROCKET
