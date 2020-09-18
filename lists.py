@@ -62,6 +62,8 @@ OP_CALL_FAR_EBP =  b"\xff\x1c\x24"
 OP_CALL_FAR_ESP =  b"\xff\x5d\x00"
 
 
+OP_RET = b"\xc3"
+
 listOP_Base = []
 listOP_Base_CNT = []
 listOP_Base_NumOps = []
@@ -73,59 +75,3 @@ listOP_BaseDG_NumOps = []
 listOP_BaseDG_Module = []
 
 
-def addListBase(address, valCount, NumOpsDis, modName):
-#	print "addlistbase"
-	listOP_Base.append(address)
-	listOP_Base_CNT.append(valCount)
-	listOP_Base_NumOps.append(NumOpsDis)
-	listOP_Base_Module.append(modName)
-
-
-def searchListBase2(address, NumOpsDis):
-	print "searchListBase2"
-	i=0
-	t=0
-	for each in listOP_Base:
-		if address == listOP_Base[i]:
-			if NumOpsDis == listOP_Base_NumOps[i]:
-				t = t +1
-
-	print "ttt"
-	print t
-
-
-
-def switch33 (val): #switching the focus
-	matchObj = re.match( r'^mov [e]*c[x|l],+|^ad[d|c]+ [e]*cx,|^s[u|b]+b [e]*cx,|^pop ecx|^mul ecx|^inc ecx|^dec ecx|^add esp', val, re.M|re.I)
-	if matchObj:
-		return 1
-	if not matchObj:
-		return 0
-
-
-#i-lGoBack2
-
-def switch32(val2, i, lGoBack2): #switching the focus
-
-	print "found it:"
-
-	lGoBack = val2.__len__()
-	#lGoBack2 = lGoBack-1	
-	
-	no=0
-	print "in switch 2"
-	for v in range (lGoBack2):
-		
-		print "i: " + str(i) + " --                  " +  str(val2[lGoBack2-i])
-		if switch(val2[lGoBack2-i]) == 1:
-			print str(i) + " ; s2valb: " + str(val2[lGoBack2-i])
-			#print switch(val2[i-lGoBack2-i])
-			print "yes. "
-			no += 1
-			print "no=" + str(no)
-		i +=1
-		if lGoBack2 == i:
-			if no == 0:
-				print "COOL! "  + str(no)
-			if no > 1:
-				print "NOPE! "  + str(no)
