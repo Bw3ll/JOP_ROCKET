@@ -1,7 +1,7 @@
 ![alt text](https://github.com/Bw3ll/JOP_ROCKET/blob/master/jopRocket3.jpg)
 # JOP ROCKET
 
-The Jump-oriented Programming Reversing Open Cyber Knowledge Expert Tool, or JOP ROCKET, is a tool designed to help facilitate JOP gadget discovery in an x86 Windows environment. This tool was released at DEF CON 27, where it was the subject of a talk by Dr. Bramwell Brizendine and Dr. Josh Stroschein. A major update is under development, and it is hoped it will be released at a future conference.
+The Jump-oriented Programming Reversing Open Cyber Knowledge Expert Tool, or JOP ROCKET, is a tool designed to help facilitate JOP gadget discovery in an x86 Windows environment. This tool was released at DEF CON 27, where it was the subject of a talk by Dr. Bramwell Brizendine and Dr. Josh Stroschein. A major update is under development was released this September, 2020, with minor updates planned in the near future.
 
 Please navigate to [https://github.com/Bw3ll/JOP_ROCKET](https://github.com/Bw3ll/JOP_ROCKET/) in order to download this tool. 
 
@@ -18,7 +18,7 @@ Thank you to Austin Babcock for his help with various issues relating to the JOP
 ## Basic install instructions for JOP ROCKET
 ### Step 1:
 Install Python 2.7. The easiest way to do this will be from the website: https://www.python.org/download/releases/2.7/
-If you already have Python 3, you will still need to have Python 2.7 as the tool will not work properly with Python 3.
+If you already have Python 3, you will still need to have Python 2.7 as the tool will not work properly with Python 3. At this time, the code-base has not been updated to Python 3, as it is over 20,000 lines of code.
 If you have both, you will need to add the special comment: 
 
 **#!python2**
@@ -71,6 +71,9 @@ Look through the list and see if you have all the dependencies. For those you do
 -	Win32api
 -	Pefile2
 -	Ctypes
+
+### Needed files:
+You should have in one directory all five files, rocket.py, lists,py, checkIt.py, and stackpivot.py. To begin using the tool, run on command line, python rocket.py filename.exe -- the filename.exe being the program you wish to obtain JOP gadgets or JOP chains for.
 
 ### Errors:
 If you are getting errors like "SyntaxError: Missing parentheses in call to 'print'", it is likely running with Python 3. Try doing the fix outlined in Step 1 to make the program use Python 2.
