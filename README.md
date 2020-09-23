@@ -5,6 +5,8 @@ The Jump-oriented Programming Reversing Open Cyber Knowledge Expert Tool, or JOP
 
 Please navigate to [https://github.com/Bw3ll/JOP_ROCKET](https://github.com/Bw3ll/JOP_ROCKET/) in order to download this tool. 
 
+A major update of the framework was released September 2020; please make sure you have the latest version.
+
 The tool is a Python script utilizing the Capstone disassembly enginge as well as other dependencies. This software exploitation tool is a fully featured artifact designed to facilitate Jump-oriented Programming. It is intended to be run on Windows, but can also run on any environment with the dependencies, albeit in a more limited context outside Windows. 
 
 Usage information is not available at this time beyond what is in the help menu. Constructing JOP exploits is not straightforward and is very nuanced, with some parallels but many differences from ROP. Please refer to DEF CON talk to see a brief demo. https://www.youtube.com/watch?v=PMihX693mPE
