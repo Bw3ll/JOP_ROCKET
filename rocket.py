@@ -4674,7 +4674,9 @@ def showProtectStatus():
 	
 def setHowDeep():
 	global Depth
-	print "what should be the depth for dispatcher gadgets?\n"
+	print "Default depth value: " + str(Depth)
+	print "This is a high depth and will produce false positives; some could be viable. \n"
+	print "What should be the depth for dispatcher gadgets?\n"
 	sp()
 	vt = raw_input()
 	Depth = vt
@@ -13245,10 +13247,9 @@ def UI():
 		    if r[0:1] == "t":
 		    	if not checkForHelpD(r):
 		     		changeCF()
-		    if r[0:1] == "d": #dispatcher gadet
+		    if r[0:1] == "D": #dispatcher gadet
 		    	if not checkForHelpD(r):
-		     		checkForDG()
-		     		runGetRegsDG()
+		     		setHowDeep()
 		    if r[0:1] == "d": #dispatcher gadet
 		    	if not checkForHelpD(r):
 		     		checkForDG()
