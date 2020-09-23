@@ -13,7 +13,7 @@ IA86 =["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EDI", "EBP", "ESP"]
 RegsVP=["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EDI", "EBP", "ESP"]
 IA862 =["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EDI", "EBP", "ESP"]
 CF2 = ["JMP", "CALL", "ALL"]
-InputAcceptable = ["ja", "jb", "jc", "jd", "jdi","jsi", "jbp", "jsp", "j", "c", "ca","cb", "cc", "cd", "cdi", "csi","cbp", "csp", "pja", "pjb", "pjc", "pjd", "pjdi","pjsi", "pjbp", "pjsp", "pj", "pc", "pca","pcb", "pcc", "pcd", "pcdi", "pcsi","pcbp", "pcsp","ma", "a", "s", "m","d", "move", "mov", "movv", "movs","l", "xc", "st", "po", "pu","id", "inc", "dec", "bit", "sl","sr", "rr", "rl", "all", "rec","da", "db", "dc", "dd", "ddi","dsi", "dbp", "dis","ba", "bb", "bc", "bd", "bdi","bsi", "bbp", "bdis","oa", "ob", "oc", "od", "odi","osi", "obp", "odis", "stack", "deref"] #,"", "", "", "", "","", "", "", "", "","", "", "", "", "","", "", "", "", "","", "", "", "", "",
+InputAcceptable = ["ja", "jb", "jc", "jd", "jdi","jsi", "jbp", "jsp", "j", "c", "ca","cb", "cc", "cd", "cdi", "csi","cbp", "csp", "pja", "pjb", "pjc", "pjd", "pjdi","pjsi", "pjbp", "pjsp", "pj", "pc", "pca","pcb", "pcc", "pcd", "pcdi", "pcsi","pcbp", "pcsp","ma", "a", "s", "m","d", "move", "mov", "movv", "movs","l", "xc", "st", "po", "pu","id", "inc", "dec", "bit", "sl","sr", "rr", "rl", "all", "rec","da", "db", "dc", "dd", "ddi","dsi", "dbp", "dis","ba", "bb", "bc", "bd", "bdi","bsi", "bbp", "bdis","oa", "ob", "oc", "od", "odi","osi", "obp", "odis", "stack", "deref", "emp","dplus"] #,"", "", "", "", "","", "", "", "", "","", "", "", "", "","", "", "", "", "","", "", "", "", "",
 
 NumOpsD = 13    # 13
 linesGoBack = 4
@@ -36,9 +36,9 @@ def showOptions():
 	options += "j: Generate pre-built JOP chains! (NEW)\n"
 	options += "r: Specify target 32-bit registers, delimited by commas. E.g. eax, ebx, edx\n"
 	options += "t: Set control flow, e.g. JMP, CALL, ALL\n"
-	options += "g: Discover or get gadgets; this gets all gadgets ending in specified registers.\n"
-	options += "G: Discover or get gadgets ending in JMP; this sets ALL registers. (NEW)\n"
-	options += "Z: Discover or get gadgets ending in JMP & CALL; this sets ALL registers. (NEW)\n"
+	options += "g: Discover or get gadgets; this gets gadgets ending in *specified* registers.\n"
+	options += "G: Discover or get gadgets ending in JMP; this gets ALL registers. (NEW)\n"
+	options += "Z: Discover or get gadgets ending in JMP & CALL; this gets ALL registers. (NEW)\n"
 
 	# options += "d: Get d. gadgets, e.g. by REG or ALL.\n"
 	options += "p: Print sub-menu.E.g. Print ALL, all by REG, by operation, etc.\n"
@@ -55,6 +55,7 @@ def showOptions():
 	options += "c: Clears everything.\n"
 	options += "k: Clears selected DLLs.\n"
 	options += "y: Useful information.\n"
+	options += "q: Credits\n"
 	options += "x: exit.\n"
 	print options
 	sp()
@@ -121,8 +122,9 @@ def showPrintOptions():
 	options +=" \n"
 	options +="oa - Print d. gadgets for EAX\t\tob - Print best d. gadgets for EBX\n"	
 	options +="oc - Print d. gadgets for ECX\t\tod - Print best d. gadgets for EDX\n"	
-	options +="odi - Print d. gadgets for EDI\t\tbsi - Print best d. gadgets for ESI\n"
+	options +="odi - Print d. gadgets for EDI\t\tosi - Print best d. gadgets for ESI\n"
 	options +="obp - Print d. gadgets for EBP\t\t \n"
+	options +="dplus - print all alternative d. gadgets - jmp ptr dword [ reg +/-]"
 	options +=" \n"
 	options +="j - Print all JMP REG\t\t\tc - Print all CALL REG\n"
 	options +="\tja - Print all JMP EAX\t\t\tca - Print all CALL EAX\n"
@@ -133,6 +135,7 @@ def showPrintOptions():
 	options +="\tjsi - Print all JMP ESI\t\t\tcsi - Print all CALL ESI\n"
 	options +="\tjbp - Print all JMP EBP\t\t\tcbp - Print all CALL EBP\n"
 	options +="\tjsp - Print all JMP ESP\t\t\tcsp - Print all CALL ESP\n"
+	options +="emp - Print all 'empty' JMP PTR [reg]  (NEW) \n"
 	options +="pj - Print JMP PTR [REG]\t\tpc - Print CALL PTR [REG]\n"
 	options +="\tpja - Print JMP PTR [EAX]\t\tpca - Print CALL PTR [EAX]\n"
 	options +="\tpjb - Print JMP PTR [EBX]\t\tpcb - Print CALL PTR [EBX\n"

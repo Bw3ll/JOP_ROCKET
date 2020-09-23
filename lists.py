@@ -62,6 +62,17 @@ OP_CALL_FAR_EBP =  b"\xff\x1c\x24"
 OP_CALL_FAR_ESP =  b"\xff\x5d\x00"
 
 
+OTHER_JMP_PTR_EAX_SHORT =  b"\xff\x60"
+OTHER_JMP_PTR_EAX_LONG =  b"\xff\xa0"  #  ff a0 00 01 00 00       jmp    DWORD PTR [eax+0x100]   # should be 00 00 on last two, or too unrealistic
+
+OTHER_JMP_PTR_EBX_SHORT =  b"\xff\x63"
+OTHER_JMP_PTR_ECX_SHORT =  b"\xff\x61"
+OTHER_JMP_PTR_EDX_SHORT =  b"\xff\x62"
+OTHER_JMP_PTR_EDI_SHORT =  b"\xff\x67"
+OTHER_JMP_PTR_ESI_SHORT =  b"\xff\x66"
+OTHER_JMP_PTR_ESP_SHORT =  b"\xff\x64"
+OTHER_JMP_PTR_EBP_SHORT =  b"\xff\x65"
+
 OP_RET = b"\xc3"
 
 listOP_Base = []

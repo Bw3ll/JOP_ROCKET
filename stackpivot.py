@@ -107,7 +107,7 @@ def addtoEsp(main, byt, Reg):
 	# for x in main:
 	while (b < len(main)):
 		if (len(main)==0):
-			print "cutting"
+			# print "cutting"
 			break
 		# print "main lenght + " +  str(len(main))
 		# print "b" + str(b)
