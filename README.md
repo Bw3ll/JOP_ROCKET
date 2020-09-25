@@ -89,5 +89,8 @@ To utilize this in a Cygwin environment, you likely will need to install Capston
 
 More detailed usage information is forthcoming. Refer to the DEF CON 27 talk and the help sub-menu for assistance.
 
-To get started though, you want to have the three Python files in the same directory: rocket.py, ui.py, and lists.py. Then run from command line. You can provide a local file in the install directory, but it will not be able to find modules/DLL's. To find these, the program must be installed, and the absolute path to the application can be supplied as input inside a text file that can be provided as an argument on the command line, e.g.
-   python rocket.py input
+To get started though, you want to have the five Python files in the same directory: rocket.py, ui.py, stackpivot.py, checkIt.py, and lists.py. Then run from command line. You can provide a local file in the install directory, but it will not be able to find modules/DLL's. To find these, the program must be installed, and the absolute path to the application can be supplied as input inside a text file that can be provided as an argument on the command line, e.g.
+   python rocket.py input.txt
+Inside input.txt, we would have the absolute path, e.g. C:\rocket2\sample_binary.exe. By providing the absolute path, you will be able to extract the modules to scan as well, if so desired. If you want to use JOP ROCKET with only the program in the local directory, it will only find gadgets for the image executable itself, i.e. no DLLs. To use it in that fashion, use the following syntax:
+   python rocket.py sample_binary.exe
+If the executable is in the same directory, you may use JOP ROCKET in the manner described above
