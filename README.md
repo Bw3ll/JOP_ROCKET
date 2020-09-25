@@ -1,6 +1,8 @@
 ![alt text](https://github.com/Bw3ll/JOP_ROCKET/blob/master/jopRocket3.jpg)
 # JOP ROCKET
 
+Current version: 2.01
+
 The Jump-oriented Programming Reversing Open Cyber Knowledge Expert Tool, or JOP ROCKET, is a tool designed to help facilitate JOP gadget discovery in an x86 Windows environment. This tool was released at DEF CON 27, where it was the subject of a talk by Dr. Bramwell Brizendine and Dr. Josh Stroschein. A major update is under development was released this September, 2020, with minor updates planned in the near future.
 
 Please navigate to [https://github.com/Bw3ll/JOP_ROCKET](https://github.com/Bw3ll/JOP_ROCKET/) in order to download this tool. 
@@ -15,6 +17,7 @@ This tool has been taught at Dakota State University in the doctoral program, as
 
 Thank you to Austin Babcock for his help with various issues relating to the JOP ROCKET, including his install instructions. He is a master of JOP. 
 
+We have uploaded an archive, JOP ROCKET challenge - toy binaries.zip, to allow interested parties to test and practice JOP on some sample toy binariesusing the JOP ROCKET, using the JOP ROCKET. Can you bypass Data Execution Prevention (DEP)? This is good if you want to practice JOP on a binary that you know is guaranteed to be vulnerable and have the right gadgets. There is an easier and a harder version of the same binary. Though JOP likely will be harder the first time, until someone gets the hang of it.
 
 
 ## Basic install instructions for JOP ROCKET
