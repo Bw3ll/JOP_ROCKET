@@ -17,7 +17,7 @@ This tool has been taught at Dakota State University in the doctoral program, as
 
 Thank you to Austin Babcock for his help with various issues relating to the JOP ROCKET, including his install instructions. He is a master of JOP. 
 
-We have uploaded an archive, JOP ROCKET challenge - toy binaries.zip, to allow interested parties to test and practice JOP on some sample toy binariesusing the JOP ROCKET, using the JOP ROCKET. Can you bypass Data Execution Prevention (DEP)? This is good if you want to practice JOP on a binary that you know is guaranteed to be vulnerable and have the right gadgets. There is an easier and a harder version of the same binary. Though JOP likely will be harder the first time, until someone gets the hang of it.
+I have uploaded an archive here, JOP ROCKET challenge - toy binaries.zip, to allow interested parties to test and practice JOP on some sample toy binariesusing the JOP ROCKET, using the JOP ROCKET. Can you bypass Data Execution Prevention (DEP)? This is good if you want to practice JOP on a binary that you know is guaranteed to be vulnerable and have the right gadgets. There is an easier and a harder version of the same binary. Though JOP likely will be harder the first time, until someone gets the hang of it.
 
 
 ## Basic install instructions for JOP ROCKET
