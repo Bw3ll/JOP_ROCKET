@@ -13600,47 +13600,65 @@ def doFinalVA(z):
 	outVP=""
 	for Reg in RegsVP:
 		if Reg=="EAX":
+			# print "ok"
 			for x in range(z):
 				outVA+= FinalVA("EAX",0)
 				outVP+= FinalVP("EAX",0)
 				# print outVA
 			resetAfterVAPACalls()
+			# print "ok2"
 		if Reg=="EBX":	
 			for x in range(z):
 				outVA+=  FinalVA("EBX",0)
 				outVP+= FinalVP("EBX",0)
 				# print outVA
 			resetAfterVAPACalls()
+			# print "ok3"
 		if Reg=="ECX":	
 			for x in range(z):
 				outVA+= FinalVA("ECX",0)
 				outVP+= FinalVP("ECX",0)
 				# print outVA
 			resetAfterVAPACalls()
+			# print "ok4"
 		if Reg=="EDX"	:
 			for x in range(z):
 				outVA+=  FinalVA("EDX",0)
 				outVP+= FinalVP("EDX",0)
 				# print outVA
 			resetAfterVAPACalls()
-		if Reg=="EDI":	
-			for x in range(z):
-				outVA+=  FinalVA("EDI",0)
-				outVP+= FinalVP("EDI",0)
-				# print outVA
-			resetAfterVAPACalls()
+			# print "ok5"
+		try: 
+			if Reg=="EDI":	
+				for x in range(z):
+					try:
+						outVA+=  FinalVA("EDI",0)
+					except:
+						pass
+
+					# print "ok5a"
+					outVP+= FinalVP("EDI",0)
+					# print "ok5b"
+					# print outVA
+				resetAfterVAPACalls()
+				# print "ok6"
+		except:
+			# print "pass"
+			pass
 		if Reg=="ESI":	
 			for x in range(z):
 				outVA+=  FinalVA("ESI",0)
 				outVP+= FinalVP("ESI",0)
 				# print outVA
 			resetAfterVAPACalls()
+			# print "ok7"
 		if Reg=="EBP":	
 			for x in range(z):
 				outVA+= FinalVA("EBP",0)
 				outVP+= FinalVP("EBP",0)
 				# print outVA
 			resetAfterVAPACalls()
+			# print "ok8"
 	idval=1
 	while os.path.exists("%s-JOP_CHAINS-%s.txt" % (peName, idval)):
 	    idval += 1
@@ -25805,9 +25823,11 @@ def StartDEPBypass():
 	FinalVP()
 def prepTasksVP(Reg, numDistinctPivots):
 	# printlistOP_SP3(NumOpsD, Reg)
+	# print "stackpiv"
 	s1, s2=getStackPivotAsLists(NumOpsD, Reg)
 	# doStackPivotTasks(s1,s2,paddingMaker4Bytes(2,2))
 
+	# print "stackpiv2"
 	doStackPivotTasks(s1,s2, Reg)
 	# out += paddingMaker1(6)
 def FinalVP(Reg, numDistinctPivots):
@@ -25970,6 +25990,7 @@ def FinalVA(Reg, numDistinctPivots):
 	###make it so you only have to do calls once??? 
 	global save3
 	prepTasksVP(Reg,0)
+	# print "prep tasks"
 	# out = "\nSet up for Register: " + Reg
 	out="\n* * * * * * * * * * * * * * * * * * * * * * * * * * * *\n# VirtualAlloc() JOP chain set up for functional gadgets ending in Jmp/Call " + Reg+ " " + vaCt() + "\n"
 	out+="\n\nimport struct\n"
@@ -27267,7 +27288,7 @@ def splash():
 	cat+="   |  | | |   | | (        | (\ (  | |   | | |     |  ( \ \| (        | |   \n"
 	cat+="|\_)  ) | (___) | )        | ) \ \_| (___) | (____/\  /  \ \ (____/\  | |   \n"
 	cat+="(____/  (_______)/         |/   \__(_______|_______/_/    \(_______/  )_(   \n"
-	cat+="\tJOP ROCKET: Honoring Ancient Rocket Cats Everywhere\tv2.0"
+	cat+="\tJOP ROCKET: Honoring Ancient Rocket Cats Everywhere\tv2.01"
 
 	print bomb+ cat1+cat
 	

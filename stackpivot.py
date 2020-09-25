@@ -350,6 +350,8 @@ def buildStackPivotOutput():
 			FinalBytes =SPobjs[kk].total 
 			bestOut=""
 
+
+			# print "buildStackPivotOutput"
 			#####  PERFECT OUTPUT  ##############################################
 			if (SPobjs[kk].total==desired):
 				SPobjs[kk].bytCnt=0
@@ -364,30 +366,37 @@ def buildStackPivotOutput():
 				if bestOut not in PerfectOutputs:
 					PerfectOutputs.append(bestOut)
 
+			# print "buildStackPivotOutput2"
+
+
+			#### temporarily broken, disabled until fixed!!!!!
+			
 			########## PERFECT , WITH PERFECT HELP 1  #######################
-			for ttt in SPobjs[kk].PerfectHelp:
-				JustOnce=False
-				if SPobjs[kk].PerfectHelp[vvv]: #(5 > 7): #
-					# print "vvv " +str(vvv)  + "in PerfectHelp\n"
-					test=0
-					if (vvv==0):   # Just checks the first one--we only need one. Do not need 100 different permutations
-						SPobjs[kk].bytCnt= SPobjs[kk].bytCnt+ SPobjs[kk].NeedBestByt[test]
-						if not JustOnce:
-							out2 = SPobjs[kk].NeedBest[test] + " [" +str(hex(SPobjs[kk].NeedBestByt[test])) + " bytes] "  + str(hex(SPobjs[kk].bytCnt)) +  " bytes\n"# "+ str(kk) + "$PH)\n"
-							#SPobjs[kk].bytCnt= SPobjs[kk].bytCnt+ SPobjs[kk].NeedBestByt[test]
-							#out2=out2 + str(hex(SPobjs[kk].bytCnt)) +"\n"
-							FinalBytes = FinalBytes + SPobjs[kk].NeedBestByt[test]
-						test=test+1
-					#done=True
-						out3= "\t\t# $----> STACK PIVOT TOTAL: " +str(hex(FinalBytes)) + " bytes   " + str(hex(SPobjs[kk].bytCnt))  +  "***\n"
-						SPobjs[kk].bytCnt =0
-				if (vvv >=00):
-					if (truth <= truthLimit):
-						PerfectHelpOut1 =  out + out2 + out3 
-						# print PerfectHelpOut1
-						if PerfectHelpOut1 not in PerfectHelpOutputs:
-							PerfectHelpOutputs.append(PerfectHelpOut1)
-				vvv=vvv+1
+			# for ttt in SPobjs[kk].PerfectHelp:
+				# JustOnce=False
+				# if SPobjs[kk].PerfectHelp[vvv]: #(5 > 7): #
+				# 	# print "vvv " +str(vvv)  + "in PerfectHelp\n"
+				# 	test=0
+				# 	if (vvv==0):   # Just checks the first one--we only need one. Do not need 100 different permutations
+				# 		SPobjs[kk].bytCnt= SPobjs[kk].bytCnt+ SPobjs[kk].NeedBestByt[test]
+				# 		if not JustOnce:
+				# 			out2 = SPobjs[kk].NeedBest[test] + " [" +str(hex(SPobjs[kk].NeedBestByt[test])) + " bytes] "  + str(hex(SPobjs[kk].bytCnt)) +  " bytes\n"# "+ str(kk) + "$PH)\n"
+				# 			#SPobjs[kk].bytCnt= SPobjs[kk].bytCnt+ SPobjs[kk].NeedBestByt[test]
+				# 			#out2=out2 + str(hex(SPobjs[kk].bytCnt)) +"\n"
+				# 			FinalBytes = FinalBytes + SPobjs[kk].NeedBestByt[test]
+				# 		test=test+1
+				# 	#done=True
+				# 		out3= "\t\t# $----> STACK PIVOT TOTAL: " +str(hex(FinalBytes)) + " bytes   " + str(hex(SPobjs[kk].bytCnt))  +  "***\n"
+				# 		SPobjs[kk].bytCnt =0
+				# if (vvv >=00):
+				# 	if (truth <= truthLimit):
+				# 		PerfectHelpOut1 =  out + out2 + out3 
+				# 		# print PerfectHelpOut1
+				# 		if PerfectHelpOut1 not in PerfectHelpOutputs:
+				# 			PerfectHelpOutputs.append(PerfectHelpOut1)
+				# vvv=vvv+1
+
+		# print "buildStackPivotOutput3"
 ###     PERFECT HELP 2 PROLOGUE  ##############################################
 		out="\n"
 		intRes = int(SPobjs[kk].res)
@@ -465,6 +474,7 @@ def buildStackPivotOutput():
 		
 		SPobjs[kk].bytCnt =0
 		kk=kk+1
+		# print "buildStackPivotOutput4"
 	# print "** Stack pivot chains complete **"
 	return PerfectHelp2Outputs, PerfectHelpOutputs, PerfectOutputs
 
@@ -729,9 +739,11 @@ def doStackPivotTasks(s1,s2, Reg):
 	global PerfectHelpOutputs
 	global PerfectHelp2Outputs
 	####################     THIS ONLY WORKS FOR THE JMP REG / CALL REG SPECIFIED BY THE S1, S2
+	# print "doStackPivotTasks"
 	addtoEsp(s1,s2, Reg)
+	# print "doStackPivotTasks2"
 	PerfectHelp2Outputs,PerfectHelpOutputs,PerfectOutputs=buildStackPivotOutput()
-
+	# print "doStackPivotTasks3"
 def stackPivotInsertFiller(replaceSP):
 	global PerfectOutputs
 	global PerfectHelpOutputs
