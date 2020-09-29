@@ -88,7 +88,7 @@ Errors related to “lists” or “ui” likely are caused by the location of t
 
 ## More advanced install steps
 
-To utilize this in a Cygwin environment, you likely will need to install Capstone from the source. There are varous ways to do so, and Capstone's documentation provides assistance. Cygwin was used during the development of the tool.
+To utilize this in a Cygwin environment, you likely will need to install Capstone from the source. There are varous ways to do so, and Capstone's documentation provides assistance. Cygwin was originally used during the development of the tool, although this is no longer the case. JOP ROCKET v2.0 is untested on Cygwin, and command prompt is the recommended usage of JOP ROCKET. 
 
 ## Basic Usage
 
