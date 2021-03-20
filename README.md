@@ -1,7 +1,7 @@
 ![alt text](https://github.com/Bw3ll/JOP_ROCKET/blob/master/jopRocket3.jpg)
 # JOP ROCKET
 
-**NOTE: We have a major update coming this April or May!**
+**NOTE: We have a major update coming this April or May, with important new features and improved performance!**
 
 Current version: 2.01
 
