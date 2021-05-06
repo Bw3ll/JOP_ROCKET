@@ -1,15 +1,14 @@
 ![alt text](https://github.com/Bw3ll/JOP_ROCKET/blob/master/jopRocket3.jpg)
 # JOP ROCKET
 
-**NOTE: We have a major update coming this April or May, with important new features and improved performance!**
-
-Current version: 2.01
+**NOTE: We made an update with important new features and improved performance 5/5/2021 with v.2.1. Another smaller update with additional gadgets is planned, including two-gadget dispatcher!**
+Current version: 2.1
 
 The Jump-oriented Programming Reversing Open Cyber Knowledge Expert Tool, or JOP ROCKET, is a tool designed to help facilitate JOP gadget discovery in an x86 Windows environment. This tool was released at DEF CON 27, where it was the subject of a talk by Dr. Bramwell Brizendine and Dr. Josh Stroschein. A major update is under development was released this September, 2020, with minor updates planned in the near future.
 
 Please navigate to [https://github.com/Bw3ll/JOP_ROCKET](https://github.com/Bw3ll/JOP_ROCKET/) in order to download this tool. 
 
-A major update of the framework was released September 2020; please make sure you have the latest version.
+A major update of the framework was released September 2020; please make sure you have the latest version. Another major release was made April 5, 2021, to drastically improve performance.
 
 The tool is a Python script utilizing the Capstone disassembly enginge as well as other dependencies. This software exploitation tool is a fully featured artifact designed to facilitate Jump-oriented Programming. It is intended to be run on Windows, but can also run on any environment with the dependencies, albeit in a more limited context outside Windows. 
 
@@ -101,3 +100,23 @@ To get started though, you want to have the five Python files in the same direct
 Inside input.txt, we would have the absolute path, e.g. C:\rocket2\sample_binary.exe. By providing the absolute path, you will be able to extract the modules to scan as well, if so desired. If you want to use JOP ROCKET with only the program in the local directory, it will only find gadgets for the image executable itself, i.e. no DLLs. To use it in that fashion, use the following syntax:
    python rocket.py sample_binary.exe
 If the executable is in the same directory, you may use JOP ROCKET in the manner described above
+
+## Making sure you get ALL the modules/DLLs for a binary
+When loading an executable or DLL to be analyzed, there are two approaches. The first is to simply place the executable in the same directory and run the program, using that as an argument, e.g. python rocket.py binary.exe. This will enable the user to identify and extract many of the system modules. However, it will not find some of the non-system binaries. For comprehensive coverage, the user must supply the absolute path to the application in a text file and use that as input to ROCKET, e.g. python rocket.py input.txt. This will then allow for ROCKET to locate, extract, and search non-system DLLs associated with the target application. Thus, it is generally recommended to supply the binary as input via a text file, as otherwise some DLLs may be excluded.
+
+## Memory Issues with Very Large Binaries
+The 32-bit Python will choke on very large binaries. To be able to work with these, you must use 64-bit Python.
+
+Here are some instructions from Austin on going from 32-bit to 64-bit Python.
+To install the 64-bit version of python2.7, first make sure the old installation has been uninstalled. After installing the 64-bit version, you may get some errors when importing libraries such as "DLL load failed: %1 is not a valid Win32 application". These occur because Python is trying to load the previously installed 32-bit versions. To fix this problem, use pip to uninstall the library. If both Python 2 and 3 are installed, make sure the correct version of pip is used by using it as "py -2 -m pip <command>". 
+
+Fixing the issue for capstone is straightforward:
+py -2 -m pip uninstall capstone
+py -2 -m pip install capstone
+
+Errors regarding the win32api import are related to pywin32. Uninstalling this is more difficult as pip may not automate the process. It may have to be uninstalled manually by deleting the PyWin32 files within ...\Python27\Lib\site-packages.
+Then, run:
+py -2 -m pip install pywin32
+
+Afterwards, finish the installation by running ...\Python27\Scripts\pywin32_postinstall.py -install
+
