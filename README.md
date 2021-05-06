@@ -1,8 +1,8 @@
 ![alt text](https://github.com/Bw3ll/JOP_ROCKET/blob/master/jopRocket3.jpg)
 # JOP ROCKET
 
-**NOTE: We made an update with important new features and improved performance 5/5/2021 with v.2.1. Another smaller update with additional gadgets is planned, including two-gadget dispatcher!**
-Current version: 2.1
+**NOTE: We made an update with important new features and improved performance 5/6/2021 with v.2.11. Another smaller update with additional gadgets is planned, including two-gadget dispatcher!**
+Current version: 2.11
 
 The Jump-oriented Programming Reversing Open Cyber Knowledge Expert Tool, or JOP ROCKET, is a tool designed to help facilitate JOP gadget discovery in an x86 Windows environment. This tool was released at DEF CON 27, where it was the subject of a talk by Dr. Bramwell Brizendine and Dr. Josh Stroschein. A major update is under development was released this September, 2020, with minor updates planned in the near future.
 
