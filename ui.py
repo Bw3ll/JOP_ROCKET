@@ -13,15 +13,11 @@ IA86 =["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EBP", "ESP"]
 RegsVP=["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EBP", "ESP"]
 IA862 =["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EBP", "ESP"]
 CF2 = ["JMP", "CALL", "ALL"]
-InputAcceptable = ["ja", "jb", "jc", "jd", "jdi","jsi", "jbp", "jsp", "j", "c", "ca","cb", "cc", "cd", "cdi", "csi","cbp", "csp", "pja", "pjb", "pjc", "pjd", "pjdi","pjsi", "pjbp", "pjsp", "pj", "pc", "pca","pcb", "pcc", "pcd", "pcdi", "pcsi","pcbp", "pcsp","ma", "a", "s", "m","d", "move", "mov", "movv", "movs","l", "xc", "st", "po", "pu","id", "inc", "dec", "bit", "sl","sr", "rr", "rl", "all", "rec","da", "db", "dc", "dd", "ddi","dsi", "dbp", "dis","ba", "bb", "bc", "bd", "bdi","bsi", "bbp", "bdis","oa", "ob", "oc", "od", "odi","osi", "obp", "odis", "stack", "deref", "emp","dplus", "mit"] #,"", "", "", "", "","", "", "", "", "","", "", "", "", "","", "", "", "", "","", "", "", "", "",
+InputAcceptable = ["ja", "jb", "jc", "jd", "jdi","jsi", "jbp", "jsp", "j", "c", "ca","cb", "cc", "cd", "cdi", "csi","cbp", "csp", "pja", "pjb", "pjc", "pjd", "pjdi","pjsi", "pjbp", "pjsp", "pj", "pc", "pca","pcb", "pcc", "pcd", "pcdi", "pcsi","pcbp", "pcsp","ma", "a", "s", "m","d", "move", "mov", "movv", "movs","l", "xc", "st", "po", "pu","id", "inc", "dec", "bit", "sl","sr", "rr", "rl", "all", "rec","da", "db", "dc", "dd", "ddi","dsi", "dbp", "dis","ba", "bb", "bc", "bd", "bdi","bsi", "bbp", "bdis","oa", "ob", "oc", "od", "odi","osi", "obp", "odis", "stack", "deref", "emp","dplus", "mit", "md","ld","cd","scd","std", "str"] #,"", "", "", "", "","", "", "", "", "","", "", "", "", "","", "", "", "", "","", "", "", "", "",
 
 NumOpsD = 13    # 13
 linesGoBack = 4
 linesGoBackFindOP = 8
-
-
-
-
 
 
 
@@ -42,6 +38,7 @@ def showOptions():
 	options += "C: Discover or get gadgets ending in CALL; this gets ALL registers. (NEW)\n"
 	# options += "d: Get d. gadgets, e.g. by REG or ALL.\n"
 	options += "p: Print sub-menu.E.g. Print ALL, all by REG, by operation, etc.\n"
+	options += "P: Print EVERYTHING - no print sub-menu (New)\n"
 	options += "M: Mitigations sub-menu.E.g. DEP, ASLR, SafeSEH, CFG.\n"
 	options += "D: Set level of depth for d. gadgets.\n"
 	options += "m: Extract the modules for specified registers.\n"
@@ -106,12 +103,15 @@ def helpDetailed(val):
 def showPrintOptions():
 	
 	options ="**Functional commands:\n\nde - View selections\nz - Run print routines for selctions\n"
+	options +="P - Print EVERTHING all operations and regs selected (NEW)\n"
+	options +="Note: JOP chains MUST be generated separately on JOP chain sub-menu\n"
 	options +="g - Enter operations to print\n"
-	options +="\t**You must specify operations to print.**\n"
+	options +="\t*!*You MUST specify operations to print.*!*\n"
 	options +="r - Set registers to print\n"  # options ="Clear all Options\n" have this as option
-	options +="\t**You must specify the registers to print.**\n"
+	options +="\t*!*You MUST specify the registers to print.*!*\n"
 	options +="C - Clear all selected operations\n"
 	options +="mit - Print Mitigations for scanned modules\n"  # options ="Clear all Options\n" have this as option
+	options +="\tMust scan for mitigations first\n"
 	options +="x - Exit print menu\n\n"  # options ="Clear all Options\n" have this as option
 	options +="dis - Print all d. gadgets\tbdis - Print all the BEST d. gadgets\n"	
 	options +="odis - Print all other d. gadgets\t\n\n"	
@@ -163,6 +163,14 @@ def showPrintOptions():
 	options +="\t\tPTR dereferences (NEW)\n"
 	options +="\tl - Print all LEA\t\t\trr - Print Rotate Right\n"
 	options +="\txc - Print XCHG\t\t\t\trl - Print Rotate Left\n"
+
+
+	options +="str - Print all strings (good for DG)\t\t\t\n"
+	options +="\tcd - cmpsd\t\t\n"
+	options +="\tld - lodsd\t\t\n"
+	options +="\tmd - movsd\t\t\n"
+	options +="\tstd - stosd\t\t\n"
+	options +="\tscd - scasd\t\t\n"
 
 	options +="\nall - Print all the above\t\t\trec - Print all operations only (Recommended)\n\n"
 		

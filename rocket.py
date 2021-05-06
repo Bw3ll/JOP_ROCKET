@@ -1276,6 +1276,26 @@ class MyBytes:
 		self.listOP_RET_CNT = []
 		self.listOP_RET_NumOps = []
 		self.listOP_RET_Module = []
+		self.listOP_BaseScasd = []
+		self.listOP_BaseScasd_CNT = []
+		self.listOP_BaseScasd_NumOps = []
+		self.listOP_BaseScasd_Module = []
+		self.listOP_BaseMovsd = []
+		self.listOP_BaseMovsd_CNT = []
+		self.listOP_BaseMovsd_NumOps = []
+		self.listOP_BaseMovsd_Module = []
+		self.listOP_BaseCmpsd = []
+		self.listOP_BaseCmpsd_CNT = []
+		self.listOP_BaseCmpsd_NumOps = []
+		self.listOP_BaseCmpsd_Module = []
+		self.listOP_BaseLodsd = []
+		self.listOP_BaseLodsd_CNT = []
+		self.listOP_BaseLodsd_NumOps = []
+		self.listOP_BaseLodsd_Module = []
+		self.listOP_BaseStosd = []
+		self.listOP_BaseStosd_CNT = []
+		self.listOP_BaseStosd_NumOps = []
+		self.listOP_BaseStosd_Module = []
 	
 
 # end classs
@@ -3179,7 +3199,31 @@ def addListBaseRotLeft(address, valCount, numOps, modName):
 	objs[o].listOP_BaseRotLeft_CNT.append(valCount)
 	objs[o].listOP_BaseRotLeft_NumOps.append(numOps)
 	objs[o].listOP_BaseRotLeft_Module.append(modName)
-
+def addListScasd(address, valCount, numOps, modName):
+	objs[o].listOP_BaseScasd.append(address)
+	objs[o].listOP_BaseScasd_CNT.append(valCount)
+	objs[o].listOP_BaseScasd_NumOps.append(numOps)
+	objs[o].listOP_BaseScasd_Module.append(modName)
+def addListMovsd(address, valCount, numOps, modName):
+	objs[o].listOP_BaseMovsd.append(address)
+	objs[o].listOP_BaseMovsd_CNT.append(valCount)
+	objs[o].listOP_BaseMovsd_NumOps.append(numOps)
+	objs[o].listOP_BaseMovsd_Module.append(modName)
+def addListCmpsd(address, valCount, numOps, modName):
+	objs[o].listOP_BaseCmpsd.append(address)
+	objs[o].listOP_BaseCmpsd_CNT.append(valCount)
+	objs[o].listOP_BaseCmpsd_NumOps.append(numOps)
+	objs[o].listOP_BaseCmpsd_Module.append(modName)
+def addListLodsd(address, valCount, numOps, modName):
+	objs[o].listOP_BaseLodsd.append(address)
+	objs[o].listOP_BaseLodsd_CNT.append(valCount)
+	objs[o].listOP_BaseLodsd_NumOps.append(numOps)
+	objs[o].listOP_BaseLodsd_Module.append(modName)
+def addListStosd(address, valCount, numOps, modName):
+	objs[o].listOP_BaseStosd.append(address)
+	objs[o].listOP_BaseStosd_CNT.append(valCount)
+	objs[o].listOP_BaseStosd_NumOps.append(numOps)
+	objs[o].listOP_BaseStosd_Module.append(modName)	
 def clearListAddAll():
 	objs[o].listOP_BaseAdd[:] = []
 	objs[o].listOP_BaseAdd_CNT[:] = []
@@ -3217,6 +3261,51 @@ def clearListAddAll():
 	objs[o].listOP_BaseAddEDI_Module[:] = []
 	objs[o].listOP_BaseAddESI_Module[:] = []
 	objs[o].listOP_BaseAddEBP_Module[:] = []
+	objs[o].listOP_BaseScasd[:] = []
+	objs[o].listOP_BaseScasd_CNT[:] = []
+	objs[o].listOP_BaseScasd_NumOps[:] = []
+	objs[o].listOP_BaseScasd_Module[:] = []
+	objs[o].listOP_BaseMovsd[:] = []
+	objs[o].listOP_BaseMovsd_CNT[:] = []
+	objs[o].listOP_BaseMovsd_NumOps[:] = []
+	objs[o].listOP_BaseMovsd_Module[:] = []
+	objs[o].listOP_BaseCmpsd[:] = []
+	objs[o].listOP_BaseCmpsd_CNT[:] = []
+	objs[o].listOP_BaseCmpsd_NumOps[:] = []
+	objs[o].listOP_BaseCmpsd_Module[:] = []
+	objs[o].listOP_BaseLodsd[:] = []
+	objs[o].listOP_BaseLodsd_CNT[:] = []
+	objs[o].listOP_BaseLodsd_NumOps[:] = []
+	objs[o].listOP_BaseLodsd_Module[:] = []
+	objs[o].listOP_BaseStosd[:] = []
+	objs[o].listOP_BaseStosd_CNT[:] = []
+	objs[o].listOP_BaseStosd_NumOps[:] = []
+	objs[o].listOP_BaseStosd_Module[:] = []
+def clearListBaseScasd():
+	objs[o].listOP_BaseScasd[:] = []
+	objs[o].listOP_BaseScasd_CNT[:] = []
+	objs[o].listOP_BaseScasd_NumOps[:] = []
+	objs[o].listOP_BaseScasd_Module[:] = []
+def clearListBaseMovsd():
+	objs[o].listOP_BaseMovsd[:] = []
+	objs[o].listOP_BaseMovsd_CNT[:] = []
+	objs[o].listOP_BaseMovsd_NumOps[:] = []
+	objs[o].listOP_BaseMovsd_Module[:] = []
+def clearListBaseCmpsd():
+	objs[o].listOP_BaseCmpsd[:] = []
+	objs[o].listOP_BaseCmpsd_CNT[:] = []
+	objs[o].listOP_BaseCmpsd_NumOps[:] = []
+	objs[o].listOP_BaseCmpsd_Module[:] = []
+def clearListBaseLodsd():
+	objs[o].listOP_BaseLodsd[:] = []
+	objs[o].listOP_BaseLodsd_CNT[:] = []
+	objs[o].listOP_BaseLodsd_NumOps[:] = []
+	objs[o].listOP_BaseLodsd_Module[:] = []
+def clearListBaseStosd():
+	objs[o].listOP_BaseStosd[:] = []
+	objs[o].listOP_BaseStosd_CNT[:] = []
+	objs[o].listOP_BaseStosd_NumOps[:] = []
+	objs[o].listOP_BaseStosd_Module[:] = []	
 def clearListBaseAdd():
 	objs[o].listOP_BaseAdd[:] = []
 	objs[o].listOP_BaseAdd_CNT[:] = []
@@ -6960,6 +7049,59 @@ def disHereJmp(address, NumOpsDis, Reg, newReg = "default"):
 										# addListBaseRotRight(save, lGoBack, NumOpsDis, modName)
 							except IndexError:
 								pass
+
+
+							try:
+								matchCmpsd = re.match( r'cmpsd', val2[i-lGoBack], re.M|re.I)
+								if matchCmpsd:
+									numLines= giveLineNum(val5,val2[i-lGoBack])
+									z =stupidPreJ(val5, numLines)
+									if z == True:
+										addListCmpsd(saveq, numLines, NumOpsDis, modName)
+
+							except:
+								pass
+
+							try:
+								matchCmpsd = re.match( r'movsd', val2[i-lGoBack], re.M|re.I)
+								if matchCmpsd:
+									numLines= giveLineNum(val5,val2[i-lGoBack])
+									z =stupidPreJ(val5, numLines)
+									if z == True:
+										addListMovsd(saveq, numLines, NumOpsDis, modName)
+							except:
+								pass
+								
+							try:
+								matchCmpsd = re.match( r'lodsd', val2[i-lGoBack], re.M|re.I)
+								if matchCmpsd:
+									numLines= giveLineNum(val5,val2[i-lGoBack])
+									z =stupidPreJ(val5, numLines)
+									if z == True:
+										addListLodsd(saveq, numLines, NumOpsDis, modName)
+							except:
+								pass
+								
+							try:
+								matchCmpsd = re.match( r'scasd', val2[i-lGoBack], re.M|re.I)
+								if matchCmpsd:
+									numLines= giveLineNum(val5,val2[i-lGoBack])
+									z =stupidPreJ(val5, numLines)
+									if z == True:
+										addListScasd(saveq, numLines, NumOpsDis, modName)
+							except:
+								pass
+								
+							try:
+								matchCmpsd = re.match( r'stosd', val2[i-lGoBack], re.M|re.I)
+								if matchCmpsd:
+									numLines= giveLineNum(val5,val2[i-lGoBack])
+									z =stupidPreJ(val5, numLines)
+									if z == True:
+										addListStosd(saveq, numLines, NumOpsDis, modName)
+							except:
+								pass
+								
 							#done
 							lGoBack -= 1
 
@@ -8451,6 +8593,57 @@ def disHereCall(address, NumOpsDis, Reg, newReg = "default"):
 								#done
 								lGoBack -= 1
 	
+							try:
+								matchCmpsd = re.match( r'cmpsd', val2[i-lGoBack], re.M|re.I)
+								if matchCmpsd:
+									numLines= giveLineNum(val5,val2[i-lGoBack])
+									z =stupidPreJ(val5, numLines)
+									if z == True:
+										addListCmpsd(saveq, numLines, NumOpsDis, modName)
+
+							except:
+								pass
+
+							try:
+								matchCmpsd = re.match( r'movsd', val2[i-lGoBack], re.M|re.I)
+								if matchCmpsd:
+									numLines= giveLineNum(val5,val2[i-lGoBack])
+									z =stupidPreJ(val5, numLines)
+									if z == True:
+										addListMovsd(saveq, numLines, NumOpsDis, modName)
+							except:
+								pass
+								
+							try:
+								matchCmpsd = re.match( r'lodsd', val2[i-lGoBack], re.M|re.I)
+								if matchCmpsd:
+									numLines= giveLineNum(val5,val2[i-lGoBack])
+									z =stupidPreJ(val5, numLines)
+									if z == True:
+										addListLodsd(saveq, numLines, NumOpsDis, modName)
+							except:
+								pass
+								
+							try:
+								matchCmpsd = re.match( r'scasd', val2[i-lGoBack], re.M|re.I)
+								if matchCmpsd:
+									numLines= giveLineNum(val5,val2[i-lGoBack])
+									z =stupidPreJ(val5, numLines)
+									if z == True:
+										addListScasd(saveq, numLines, NumOpsDis, modName)
+							except:
+								pass
+								
+							try:
+								matchCmpsd = re.match( r'stosd', val2[i-lGoBack], re.M|re.I)
+								if matchCmpsd:
+									numLines= giveLineNum(val5,val2[i-lGoBack])
+									z =stupidPreJ(val5, numLines)
+									if z == True:
+										addListStosd(saveq, numLines, NumOpsDis, modName)
+							except:
+								pass
+								
 
 
 
@@ -12525,6 +12718,8 @@ def runGetRegsDG():
 	#print "done"#"in RunGetRegsDG"
 	sp()
 def runPrintIt():
+	global Input
+	global RegsPrint
 	showPrintOptions()
 	x = ""
 	
@@ -12563,8 +12758,21 @@ def runPrintIt():
 		    	sp()
 		    if r == "h":
 		    	showPrintOptions()
+		    if r == "P":
+		    	printAll()
+
 	 	except:
 		    pass
+
+def printAll():
+	global Input
+	global InputAcceptable
+	global RegsPrint
+	Input = copy.copy(InputAcceptable)
+	RegsPrint = ["EAX", "EBX", "ECX", "EDX", "ESI", "EDI", "EBP", "ESP"]
+	print ("Printing everything!\n\n")
+	runPrintS()
+	finalPrintSub2()
 
 def changeNumChains():
 	global numVPAA
@@ -12685,6 +12893,8 @@ def DebugCheck():
 	print Regs
 
 def runPrintS():
+	global printemp
+	global printrareDG
 	global printja
 	global printjb
 	global printjc
@@ -12716,18 +12926,18 @@ def runPrintS():
 	global printptrdi
 	global printptrsi
 	global printptrcbp
-	global printptrcsp   
+	global printptrcsp 
 	global printemp
-	global printrareDG 
+	global printrareDG
+	global printStack   
 	global printAdd
-	global printStack
 	global printSub
 	global printMul
 	global printDiv
 	global printMov
 	global printMovV
-	global printMovS
 	global printDeref
+	global printMovS
 	global printLea
 	global printXchg
 	global printPop
@@ -12759,13 +12969,33 @@ def runPrintS():
 	global printDispatcherEDIOther
 	global printDispatcherESIOther
 	global printDispatcherEBPOther
-	global printMitigations
+	global printMitigations 
+	global o
+	global printStack
+	global printDeref
+	global RegsPrint
+	global fname
+	global printemp
+	global printrareDG
+	global printMovsd 
+	global printLodsd
+	global printCmpsd
+	global printScasd
+	global printStosd
 
-	print "Setting print settings..."
+	print "Setting print settings...\n"
 	display = ""
 	for r in Input:
-		display = display + r + "    "
-	print "Operations selected: \n\t" + str(display)
+		display = display + r + ", "
+	display = display[:-2]
+	display +="\n\n"
+	print "Operations selected: " + str(display)
+	display=""
+	for t in RegsPrint:
+		display = display + t + ", "
+	display = display[:-2]
+	display +="\n\n"
+	print "Registers: " + str(display)
 	sp()
 	for r in Input:
 		if r == "j":
@@ -13015,6 +13245,11 @@ def runPrintS():
 			printlistOP_DG_Rare = True
 			printlistOP_JMP_PTR_EMPTY = True
 			printlistOP_SP3 = True
+			printMovsd = True			
+			printLodsd = True
+			printCmpsd = True
+			printScasd = True
+			printStosd = True
 		if r == "rec":
 			printlistOP_DG_Rare = True
 			printlistOP_JMP_PTR_EMPTY = True
@@ -13037,6 +13272,11 @@ def runPrintS():
 			printShiftRight = True
 			printRotateRight = True
 			printRotateLeft = True
+			printMovsd = True			
+			printLodsd = True
+			printCmpsd = True
+			printScasd = True
+			printStosd = True
 		if r == "da":
 			printDispatcherEAX = True
 		if r == "db":
@@ -13105,6 +13345,22 @@ def runPrintS():
 			printDispatcherEBPOther = True
 		if r == "mit":
 			printMitigations = True
+		if r == "str":
+			printMovsd = True			
+			printLodsd = True
+			printCmpsd = True
+			printScasd = True
+			printStosd = True
+		if r == "md":
+			printMovsd = True			
+		if r == "ld":
+			printLodsd = True
+		if r == "cd":
+			printCmpsd = True
+		if r == "scd":
+			printScasd = True
+		if r == "std":
+			printStosd = True
 
 def clearallDLLs(): #5
 	global w
@@ -13205,6 +13461,16 @@ def clearallPrint():
     global printDispatcherESIOther
     global printDispatcherEBPOther
     global printMitigations
+    global printMovsd 
+    global printLodsd
+    global printCmpsd
+    global printScasd
+    global printStosd
+    printMovsd  = False
+    printLodsd = False
+    printCmpsd = False
+    printScasd = False
+    printStosd = False
     printja = False
     printjb = False
     printjc = False
@@ -13544,7 +13810,8 @@ def UI():
 		    	testtest3()
 		    if r[0:1] == "q":
 		    	credits()
-
+		    if r[0:1] == "P":
+		    	printAll()
 		except:
 		    pass
 
@@ -18173,7 +18440,7 @@ def nope(filename, total):
 		pass
 
 oldFilename=""
-def nope3(filename):
+def nope3Old(filename):
 	global oldFilename
 	try:
 		size = os.stat(filename).st_size
@@ -18197,6 +18464,70 @@ def nope3(filename):
 		pass
 # Prevents files from being printed if empty or have no results - just removes them.
 
+
+def nope3(filename):
+	pass
+	if 5 > 55:
+		size = os.stat(filename).st_size
+		print "\t" + str(filename)  + " \t" +str(float(size)/1000.0) + " kb"
+
+
+def saveDirectory(directory,peName,Reg, operation, output, lock):
+	# global lock
+	# lock=True
+	idval=1
+	# print directory
+	directory2=directory[:-1]
+	# print directory2
+	if not os.path.exists(directory2):
+		os.makedirs(directory2)
+
+	if Reg =="":
+		while os.path.exists("%s%s_%s_%s.txt" % (directory,  peName[:-4], operation,idval)):
+			idval += 1
+	
+		if not lock:
+			# print "NOT LOCKED " + str(idval)
+			newBin = open(directory+peName[:-4]+"_"+operation+"_"+str(idval)+".txt", "wb")
+		if lock:
+			# print "LOCKED " + str(idval-1)
+			newBin = open(directory+peName[:-4]+"_"+operation+"_"+str(idval-1)+".txt", "a")
+	else:  # rEg exists	
+		while os.path.exists("%s%s_%s_%s_%s.txt" % (directory,  peName[:-4], operation, Reg, idval)):
+			idval += 1
+		if not lock:
+			# print "NOT LOCKED " + str(idval)
+			newBin = open(directory+peName[:-4]+"_"+operation+"_"+Reg+"_"+str(idval)+".txt", "wb")
+		if lock:
+			# print "LOCKED " + str(idval-1)
+			newBin = open(directory+peName[:-4]+"_"+operation+"_"+Reg+"_"+str(idval-1)+".txt", "a")
+	newBin.write(output)
+	newBin.close()
+
+def printFileSize(directory,peName,Reg, operation):
+	idval=100
+	found = False
+	# print operation
+	while idval != 0 and not found:
+		if Reg =="":
+			if os.path.exists("%s%s_%s_%s.txt" % (directory,  peName[:-4], operation,idval)):
+				# print operation + " exists"
+				# filename="%s_%s_%s.txt" % (peName[:-4], operation,idval)
+				filename= os.path.basename("%s%s_%s_%s.txt" % (directory,  peName[:-4], operation,idval))
+				# size = os.stat(filename).st_size
+				size = os.stat("%s%s_%s_%s.txt" % (directory,  peName[:-4], operation,idval)).st_size
+				print "\t" + str(filename)  + " \t" +str(float(size)/1000.0) + " kb"
+				found = True
+		else:  # rEg exists	
+			if os.path.exists("%s%s_%s_%s_%s.txt" % (directory,  peName[:-4], operation, Reg, idval)):
+				# print operation + " exists"
+				filename= os.path.basename("%s%s_%s_%s_%s.txt" % (directory,  peName[:-4], operation, Reg, idval))
+				# filename="%s_%s_%s_%s.txt" % (peName[:-4], operation, Reg, idval)
+				size = os.stat("%s%s_%s_%s_%s.txt" % (directory,  peName[:-4], operation, Reg, idval)).st_size
+				# size = "%s%s_%s_%s_%s.txt" % (directory,  peName[:-4], operation, Reg, idval).st_size
+				print "\t" + str(filename)  + " \t" +str(float(size)/1000.0) + " kb"
+				found = True
+		idval-=1
 
 def nope2(filename, total, index):
 	if total < 1:  
@@ -18301,6 +18632,7 @@ def printlistOP_Mitigations():
 
 	o = 0
 	f.close()
+	printFileSize(directory, peName, Reg, operation)
 	# print "after f.close"
 
 
@@ -18342,6 +18674,7 @@ def printlistOP_JMP_EAX(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_JMP_EBX(NumOpsDis):
 	global printStyle
@@ -18381,6 +18714,7 @@ def printlistOP_JMP_EBX(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 	
 def printlistOP_JMP_ECX(NumOpsDis):
 	global printStyle
@@ -18419,6 +18753,7 @@ def printlistOP_JMP_ECX(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_JMP_EDX(NumOpsDis):
 	global printStyle
@@ -18457,6 +18792,7 @@ def printlistOP_JMP_EDX(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 	
 def printlistOP_JMP_ESI(NumOpsDis):
 	global printStyle
@@ -18496,6 +18832,7 @@ def printlistOP_JMP_ESI(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_JMP_EDI(NumOpsDis):
 	global printStyle
@@ -18534,6 +18871,7 @@ def printlistOP_JMP_EDI(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_JMP_ESP(NumOpsDis):
 	global printStyle
@@ -18572,6 +18910,7 @@ def printlistOP_JMP_ESP(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_JMP_EBP(NumOpsDis):
 	global printStyle
@@ -18610,6 +18949,7 @@ def printlistOP_JMP_EBP(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 
@@ -19273,6 +19613,7 @@ def printlistOP_DG_Rare(NumOpsDis):
 		pass
 	o = 0	
 o = 0
+print ("Dispatcher Gadget - Alternative Form")
 
 
 
@@ -19849,6 +20190,7 @@ def printlistOP_CALL_EAX(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_CALL_EBX(NumOpsDis):
 	global printStyle
@@ -19887,6 +20229,7 @@ def printlistOP_CALL_EBX(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 	
 def printlistOP_CALL_ECX(NumOpsDis):
 	global printStyle
@@ -19925,6 +20268,7 @@ def printlistOP_CALL_ECX(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_CALL_EDX(NumOpsDis):
 	global printStyle
@@ -19963,6 +20307,7 @@ def printlistOP_CALL_EDX(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 	
 def printlistOP_CALL_ESI(NumOpsDis):
 	global printStyle
@@ -20001,6 +20346,7 @@ def printlistOP_CALL_ESI(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_CALL_EDI(NumOpsDis):
 	global printStyle
@@ -20039,6 +20385,7 @@ def printlistOP_CALL_EDI(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_CALL_ESP(NumOpsDis):
 	global printStyle
@@ -20077,6 +20424,7 @@ def printlistOP_CALL_ESP(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_CALL_EBP(NumOpsDis):
 	global printStyle
@@ -20115,6 +20463,7 @@ def printlistOP_CALL_EBP(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 
@@ -20155,6 +20504,7 @@ def printlistOP_JMP_PTR_EAX(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_JMP_PTR_EBX(NumOpsDis):
 	global printStyle
@@ -20193,6 +20543,7 @@ def printlistOP_JMP_PTR_EBX(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 	
 def printlistOP_JMP_PTR_ECX(NumOpsDis):
 	global printStyle
@@ -20231,6 +20582,7 @@ def printlistOP_JMP_PTR_ECX(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_JMP_PTR_EDX(NumOpsDis):
 	global printStyle
@@ -20269,6 +20621,7 @@ def printlistOP_JMP_PTR_EDX(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 	
 def printlistOP_JMP_PTR_ESI(NumOpsDis):
 	global printStyle
@@ -20307,6 +20660,7 @@ def printlistOP_JMP_PTR_ESI(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_JMP_PTR_EDI(NumOpsDis):
 	global printStyle
@@ -20345,6 +20699,7 @@ def printlistOP_JMP_PTR_EDI(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_JMP_PTR_ESP(NumOpsDis):
 	global printStyle
@@ -20383,6 +20738,7 @@ def printlistOP_JMP_PTR_ESP(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_JMP_PTR_EBP(NumOpsDis):
 	global printStyle
@@ -20421,6 +20777,7 @@ def printlistOP_JMP_PTR_EBP(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 
@@ -20462,6 +20819,7 @@ def printlistOP_CALL_PTR_EAX(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_CALL_PTR_EBX(NumOpsDis):
 	global printStyle
@@ -20500,6 +20858,7 @@ def printlistOP_CALL_PTR_EBX(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 	
 def printlistOP_CALL_PTR_ECX(NumOpsDis):
 	global printStyle
@@ -20538,6 +20897,7 @@ def printlistOP_CALL_PTR_ECX(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_CALL_PTR_EDX(NumOpsDis):
 	global printStyle
@@ -20576,6 +20936,7 @@ def printlistOP_CALL_PTR_EDX(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 	
 def printlistOP_CALL_PTR_ESI(NumOpsDis):
 	global printStyle
@@ -20614,6 +20975,7 @@ def printlistOP_CALL_PTR_ESI(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_CALL_PTR_EDI(NumOpsDis):
 	global printStyle
@@ -20652,6 +21014,7 @@ def printlistOP_CALL_PTR_EDI(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_CALL_PTR_ESP(NumOpsDis):
 	global printStyle
@@ -20690,6 +21053,7 @@ def printlistOP_CALL_PTR_ESP(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_CALL_PTR_EBP(NumOpsDis):
 	global printStyle
@@ -20728,6 +21092,7 @@ def printlistOP_CALL_PTR_EBP(NumOpsDis):
 		counterReset()
 		o = o + 1
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 def cleaner(addy, Cnt, numOps):
@@ -22847,7 +23212,8 @@ def printlistOP_StackPivot(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	printFileSize(directory, peName, Reg, operation)
+	o = 0
 
 
 def printlistOP_Add(NumOpsDis, Reg):
@@ -22943,6 +23309,7 @@ def printlistOP_Add(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
+	printFileSize(directory, peName, Reg, operation)
 	o = 0
 
 def printlistOP_Sub(NumOpsDis, Reg):
@@ -23039,6 +23406,7 @@ def printlistOP_Sub(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
+	printFileSize(directory, peName, Reg, operation)
 	o = 0
 
 def printlistOP_Mul(NumOpsDis, Reg):
@@ -23135,6 +23503,7 @@ def printlistOP_Mul(NumOpsDis, Reg):
 		o = o + 1
 		clearGOuts()
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 def printlistOP_Div(NumOpsDis, Reg):
 	global printDiv
 	global directory
@@ -23187,6 +23556,7 @@ def printlistOP_Div(NumOpsDis, Reg):
 		o = o + 1
 		clearGOuts()
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_MovDeref(NumOpsDis, Reg):
 	global printMovDeref
@@ -23288,6 +23658,7 @@ def printlistOP_MovDeref(NumOpsDis, Reg):
 		o = o + 1
 		clearGOuts()
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 def printlistOP_Mov(NumOpsDis, Reg):
 	global printMov
 	global directory
@@ -23382,6 +23753,7 @@ def printlistOP_Mov(NumOpsDis, Reg):
 		o = o + 1
 		clearGOuts()
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_MovShuf(NumOpsDis, Reg):
 	global printMovShuf
@@ -23477,6 +23849,7 @@ def printlistOP_MovShuf(NumOpsDis, Reg):
 		o = o + 1
 		clearGOuts()
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_MovVal(NumOpsDis, Reg):
 	global printMovVal
@@ -23572,6 +23945,7 @@ def printlistOP_MovVal(NumOpsDis, Reg):
 		o = o + 1
 		clearGOuts()
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_Lea(NumOpsDis, Reg):
 	global printLea
@@ -23667,6 +24041,7 @@ def printlistOP_Lea(NumOpsDis, Reg):
 		o = o + 1
 		clearGOuts()
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 def printlistOP_Push(NumOpsDis, Reg):
 	global printPush
 	global directory
@@ -23761,6 +24136,7 @@ def printlistOP_Push(NumOpsDis, Reg):
 		o = o + 1
 		clearGOuts()
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_Pop(NumOpsDis, Reg):
 	global printPop
@@ -23856,6 +24232,7 @@ def printlistOP_Pop(NumOpsDis, Reg):
 		o = o + 1
 		clearGOuts()
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_Inc(NumOpsDis, Reg):
 	global printInc
@@ -23951,6 +24328,7 @@ def printlistOP_Inc(NumOpsDis, Reg):
 		o = o + 1
 		clearGOuts()
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_Dec(NumOpsDis, Reg):
 	global printDec
@@ -24046,6 +24424,7 @@ def printlistOP_Dec(NumOpsDis, Reg):
 		o = o + 1
 		clearGOuts()
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 def printlistOP_Xchg(NumOpsDis, Reg):
 	global printXchg
@@ -24141,13 +24520,15 @@ def printlistOP_Xchg(NumOpsDis, Reg):
 		o = o + 1
 		clearGOuts()
 	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
-def printlistOP_RotRight(NumOpsDis, Reg):
+def printlistOP_RotRight(NumOpsDis):
 	global printPop
 	global directory
 	global printStyle
 	operation="Rotate Right OP"
 	lock = False
+	Reg="All"
 	global o
 	o=0
 	clearHashChecker()
@@ -24155,17 +24536,15 @@ def printlistOP_RotRight(NumOpsDis, Reg):
 	i=0
 	o=0
 	for obj in objs:
-		if Reg != "0":
-			cnt1 = objs[o].listOP_BaseRotRight.__len__()
+		cnt1 = objs[o].listOP_BaseRotRight.__len__()
 		for i in range (cnt1):
 			addy =0
 			cnt = 0   #
 			num = 0
-			if Reg != "0":
-				addy = objs[o].listOP_BaseRotRight[i]
-				cnt = objs[o].listOP_BaseRotRight_CNT[i]
-				num = objs[o].listOP_BaseRotRight_NumOps[i]
-				mod = objs[o].listOP_BaseRotRight_Module[i]
+			addy = objs[o].listOP_BaseRotRight[i]
+			cnt = objs[o].listOP_BaseRotRight_CNT[i]
+			num = objs[o].listOP_BaseRotRight_NumOps[i]
+			mod = objs[o].listOP_BaseRotRight_Module[i]
 			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
 			cat = disHereClean3(addy, cnt, num, "jmp")
 			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
@@ -24180,13 +24559,15 @@ def printlistOP_RotRight(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
-def printlistOP_RotLeft(NumOpsDis, Reg):
+def printlistOP_RotLeft(NumOpsDis):
 	global printPop
 	global directory
 	global printStyle
 	operation="Rotate Left OP"
+	Reg="All"
 	lock = False
 	global o
 	o=0
@@ -24195,19 +24576,15 @@ def printlistOP_RotLeft(NumOpsDis, Reg):
 	i=0
 	o=0
 	for obj in objs:
-		if Reg != "0":
-			# print "my count"
-			# print len(objs[o].listOP_BaseRotLeft.__len__())
-			cnt1 = len(objs[o].listOP_BaseRotLeft)
+		cnt1 = len(objs[o].listOP_BaseRotLeft)
 		for i in range (cnt1):
 			addy =0
 			cnt = 0   #
 			num = 0
-			if Reg != "0":
-				addy = objs[o].listOP_BaseRotLeft[i]
-				cnt = objs[o].listOP_BaseRotLeft_CNT[i]
-				num = objs[o].listOP_BaseRotLeft_NumOps[i]
-				mod = objs[o].listOP_BaseRotLeft_Module[i]
+			addy = objs[o].listOP_BaseRotLeft[i]
+			cnt = objs[o].listOP_BaseRotLeft_CNT[i]
+			num = objs[o].listOP_BaseRotLeft_NumOps[i]
+			mod = objs[o].listOP_BaseRotLeft_Module[i]
 			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
 			cat = disHereClean3(addy, cnt, num, "jmp")
 			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
@@ -24222,13 +24599,15 @@ def printlistOP_RotLeft(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
-def printlistOP_ShiftRight(NumOpsDis, Reg):
+def printlistOP_ShiftRight(NumOpsDis):
 	global printPop
 	global directory
 	global printStyle
 	operation="Shift Right OP"
+	Reg="All"
 	lock = False
 	global o
 	o=0
@@ -24237,17 +24616,15 @@ def printlistOP_ShiftRight(NumOpsDis, Reg):
 	i=0
 	o=0
 	for obj in objs:
-		if Reg != "0":
-			cnt1 = objs[o].listOP_BaseShiftRight.__len__()
+		cnt1 = objs[o].listOP_BaseShiftRight.__len__()
 		for i in range (cnt1):
 			addy =0
 			cnt = 0   #
 			num = 0
-			if Reg != "0":
-				addy = objs[o].listOP_BaseShiftRight[i]
-				cnt = objs[o].listOP_BaseShiftRight_CNT[i]
-				num = objs[o].listOP_BaseShiftRight_NumOps[i]
-				mod = objs[o].listOP_BaseShiftRight_Module[i]
+			addy = objs[o].listOP_BaseShiftRight[i]
+			cnt = objs[o].listOP_BaseShiftRight_CNT[i]
+			num = objs[o].listOP_BaseShiftRight_NumOps[i]
+			mod = objs[o].listOP_BaseShiftRight_Module[i]
 			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
 			cat = disHereClean3(addy, cnt, num, "jmp")
 			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
@@ -24262,14 +24639,16 @@ def printlistOP_ShiftRight(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
-def printlistOP_ShiftLeft(NumOpsDis, Reg):
+def printlistOP_ShiftLeft(NumOpsDis):
 	global printPop
 	global directory
 	global printStyle
 	operation="Shift Left OP"
+	Reg="All"
 	lock = False
 	global o
 	o=0
@@ -24278,19 +24657,17 @@ def printlistOP_ShiftLeft(NumOpsDis, Reg):
 	i=0
 	o=0
 	for obj in objs:
-		if Reg != "0":
-			cnt1 = objs[o].listOP_BaseShiftLeft.__len__()
+		cnt1 = objs[o].listOP_BaseShiftLeft.__len__()
 			# print ("cnt1", cnt1)
 		for i in range (cnt1):
 			addy =0
 			cnt = 0   #
 			num = 0
-			if Reg != "0":
 				# print ("o", o, "i", i, "objs", len(objs))
-				addy = objs[o].listOP_BaseShiftLeft[i]
-				cnt = objs[o].listOP_BaseShiftLeft_CNT[i]
-				num = objs[o].listOP_BaseShiftLeft_NumOps[i]
-				mod = objs[o].listOP_BaseShiftLeft_Module[i]
+			addy = objs[o].listOP_BaseShiftLeft[i]
+			cnt = objs[o].listOP_BaseShiftLeft_CNT[i]
+			num = objs[o].listOP_BaseShiftLeft_NumOps[i]
+			mod = objs[o].listOP_BaseShiftLeft_Module[i]
 			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
 			cat = disHereClean3(addy, cnt, num, "jmp")
 			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
@@ -24305,10 +24682,206 @@ def printlistOP_ShiftLeft(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
+
+def printlistOP_Cmpsd(NumOpsDis):
+	global printPop
+	global directory
+	global printStyle
+	operation="Cmpsd OP"
+	lock = False
+	global o
+	o=0
+	clearHashChecker()
+	counterReset()
+	i=0
+	o=0
+	for obj in objs:
+		cnt1 = objs[o].listOP_BaseCmpsd.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			addy = objs[o].listOP_BaseCmpsd[i]
+			cnt = objs[o].listOP_BaseCmpsd_CNT[i]
+			num = objs[o].listOP_BaseCmpsd_NumOps[i]
+			mod = objs[o].listOP_BaseCmpsd_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, "All", operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+
+	# def printFileSize(directory,peName,Reg, operation, output):		
+	printFileSize(directory, peName, "All", operation)
+	o = 0
 
 
+def printlistOP_Lodsd(NumOpsDis):
+	global printPop
+	global directory
+	global printStyle
+	operation="Lodsd OP"
+	lock = False
+	global o
+	o=0
+	clearHashChecker()
+	counterReset()
+	i=0
+	o=0
+	for obj in objs:
+		cnt1 = objs[o].listOP_BaseLodsd.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			addy = objs[o].listOP_BaseLodsd[i]
+			cnt = objs[o].listOP_BaseLodsd_CNT[i]
+			num = objs[o].listOP_BaseLodsd_NumOps[i]
+			mod = objs[o].listOP_BaseLodsd_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, "All", operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+	o = 0
+	printFileSize(directory, peName, "All", operation)
 
+def printlistOP_Stosd(NumOpsDis):
+	global printPop
+	global directory
+	global printStyle
+	operation="Stosd OP"
+	lock = False
+	global o
+	o=0
+	clearHashChecker()
+	counterReset()
+	i=0
+	o=0
+	for obj in objs:
+		cnt1 = objs[o].listOP_BaseStosd.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			addy = objs[o].listOP_BaseStosd[i]
+			cnt = objs[o].listOP_BaseStosd_CNT[i]
+			num = objs[o].listOP_BaseStosd_NumOps[i]
+			mod = objs[o].listOP_BaseStosd_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, "All", operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+	o = 0
+	printFileSize(directory, peName, "All", operation)
+
+def printlistOP_Movsd(NumOpsDis):
+	global printPop
+	global directory
+	global printStyle
+	operation="Movsd OP"
+	lock = False
+	global o
+	o=0
+	clearHashChecker()
+	counterReset()
+	i=0
+	o=0
+	for obj in objs:
+		cnt1 = objs[o].listOP_BaseMovsd.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			addy = objs[o].listOP_BaseMovsd[i]
+			cnt = objs[o].listOP_BaseMovsd_CNT[i]
+			num = objs[o].listOP_BaseMovsd_NumOps[i]
+			mod = objs[o].listOP_BaseMovsd_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, "All", operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+	o = 0
+	printFileSize(directory, peName, "All", operation)
+		
+def printlistOP_Scasd(NumOpsDis):
+	global printPop
+	global directory
+	global printStyle
+	operation="Scasd OP"
+	lock = False
+	global o
+	o=0
+	clearHashChecker()
+	counterReset()
+	i=0
+	o=0
+	for obj in objs:
+		cnt1 = objs[o].listOP_BaseScasd.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			addy = objs[o].listOP_BaseScasd[i]
+			cnt = objs[o].listOP_BaseScasd_CNT[i]
+			num = objs[o].listOP_BaseScasd_NumOps[i]
+			mod = objs[o].listOP_BaseScasd_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, "All", operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+	o = 0
+	printFileSize(directory, peName, "All", operation)
 
 #now3
 def get_Dispatcher_G(NumOpsDis, HowDeep, Reg):
@@ -24483,7 +25056,9 @@ def printListDG_EAX(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
+
 
 
 
@@ -24525,7 +25100,8 @@ def printListDG_EBX(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 
@@ -24567,7 +25143,8 @@ def printListDG_ECX(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 def printListDG_EDX(NumOpsDis, Reg):
@@ -24608,7 +25185,8 @@ def printListDG_EDX(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 def printListDG_EDI(NumOpsDis, Reg):
@@ -24649,7 +25227,8 @@ def printListDG_EDI(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 def printListDG_ESI(NumOpsDis, Reg):
@@ -24690,7 +25269,8 @@ def printListDG_ESI(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 def printListDG_EBP(NumOpsDis, Reg):
@@ -24731,7 +25311,8 @@ def printListDG_EBP(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 def printListDG_ESP(NumOpsDis, Reg):
@@ -24772,7 +25353,8 @@ def printListDG_ESP(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 
@@ -24814,7 +25396,8 @@ def printListDG_BEST_EAX(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 
@@ -24856,7 +25439,8 @@ def printListDG_BEST_EBX(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 
@@ -24898,7 +25482,8 @@ def printListDG_BEST_ECX(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 def printListDG_BEST_EDX(NumOpsDis, Reg):
@@ -24939,7 +25524,8 @@ def printListDG_BEST_EDX(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 def printListDG_BEST_EDI(NumOpsDis, Reg):
@@ -24980,7 +25566,8 @@ def printListDG_BEST_EDI(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 def printListDG_BEST_ESI(NumOpsDis, Reg):
@@ -25021,7 +25608,8 @@ def printListDG_BEST_ESI(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 def printListDG_BEST_EBP(NumOpsDis, Reg):
@@ -25062,7 +25650,8 @@ def printListDG_BEST_EBP(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 def printListDG_BEST_ESP(NumOpsDis, Reg):
@@ -25103,7 +25692,8 @@ def printListDG_BEST_ESP(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 
@@ -25145,7 +25735,8 @@ def printListDG_Other_EAX(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 
@@ -25187,7 +25778,8 @@ def printListDG_Other_EBX(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 
@@ -25229,7 +25821,8 @@ def printListDG_Other_ECX(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 def printListDG_Other_EDX(NumOpsDis, Reg):
@@ -25270,7 +25863,8 @@ def printListDG_Other_EDX(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 def printListDG_Other_EDI(NumOpsDis, Reg):
@@ -25311,7 +25905,8 @@ def printListDG_Other_EDI(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 def printListDG_Other_ESI(NumOpsDis, Reg):
@@ -25352,7 +25947,8 @@ def printListDG_Other_ESI(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 def printListDG_Other_EBP(NumOpsDis, Reg):
@@ -25393,7 +25989,8 @@ def printListDG_Other_EBP(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 
 def printListDG_Other_ESP(NumOpsDis, Reg):
@@ -25434,7 +26031,8 @@ def printListDG_Other_ESP(NumOpsDis, Reg):
 				lock=True			
 		o = o + 1
 		clearGOuts()
-o = 0
+	o = 0
+	printFileSize(directory, peName, Reg, operation)
 
 # def printListDG_Other_EAX( NumOpsDis,dg):	
 # 	global o
@@ -30466,11 +31064,13 @@ def finalPrintSub2():
 	global fname
 	global printemp
 	global printrareDG
+	global printMovsd 
+	global printLodsd
+	global printCmpsd
+	global printScasd
+	global printStosd
 	o =0
-	#print "o " + str(o)
-	#print "Final print setings..."
-	#print RegsPrint
-
+	
 	count = 0
 	t=0
 	try:
@@ -30499,6 +31099,59 @@ def finalPrintSub2():
 
 	except:
 		pass		
+	try:
+		if printShiftLeft == True:
+			printlistOP_ShiftLeft(NumOpsD)
+			nope3(fname)
+
+	except:
+		nope3(fname)
+	try:
+		if printShiftRight == True:
+			printlistOP_ShiftRight(NumOpsD)
+			nope3(fname)
+
+	except:
+		nope3(fname)
+	try:
+		if printRotateRight == True:
+			printlistOP_RotRight(NumOpsD)
+			nope3(fname)
+
+	except:
+		nope3(fname)
+	try:
+		if printRotateLeft == True:
+			printlistOP_RotLeft(NumOpsD)
+			nope3(fname)
+
+	except:
+		nope3(fname)
+	try:
+		if printLodsd == True:
+			printlistOP_Lodsd(NumOpsD)
+	except:
+		pass
+	try:
+		if printCmpsd == True:
+			printlistOP_Cmpsd(NumOpsD)
+	except:
+		pass
+	try:
+		if printMovsd == True:
+			printlistOP_Movsd(NumOpsD)
+	except:
+		pass
+	try:
+		if printScasd == True:
+			printlistOP_Scasd(NumOpsD)
+	except:
+		pass
+	try:
+		if printStosd == True:
+			printlistOP_Stosd(NumOpsD)
+	except:
+		pass
 	for Reg in RegsPrint:  #For loop does not work properly without the try's. That is, if one subrountine cannot rune, the for loop would break, thereby not letting me do all it is supposed to do.
 		# print "global Reg: "  + Reg
 		# printlistOP_Add(NumOpsD, Reg)
@@ -30605,34 +31258,34 @@ def finalPrintSub2():
 
 		except:
 			nope3(fname)
-		try:
-			if printShiftLeft == True:
-				printlistOP_ShiftLeft(NumOpsD, Reg)
-				nope3(fname)
+		# try:
+		# 	if printShiftLeft == True:
+		# 		printlistOP_ShiftLeft(NumOpsD, Reg)
+		# 		nope3(fname)
 
-		except:
-			nope3(fname)
-		try:
-			if printShiftRight == True:
-				printlistOP_ShiftRight(NumOpsD, Reg)
-				nope3(fname)
+		# except:
+		# 	nope3(fname)
+		# try:
+		# 	if printShiftRight == True:
+		# 		printlistOP_ShiftRight(NumOpsD, Reg)
+		# 		nope3(fname)
 
-		except:
-			nope3(fname)
-		try:
-			if printRotateRight == True:
-				printlistOP_RotRight(NumOpsD, Reg)
-				nope3(fname)
+		# except:
+		# 	nope3(fname)
+		# try:
+		# 	if printRotateRight == True:
+		# 		printlistOP_RotRight(NumOpsD, Reg)
+		# 		nope3(fname)
 
-		except:
-			nope3(fname)
-		try:
-			if printRotateLeft == True:
-				printlistOP_RotLeft(NumOpsD, Reg)
-				nope3(fname)
+		# except:
+		# 	nope3(fname)
+		# try:
+		# 	if printRotateLeft == True:
+		# 		printlistOP_RotLeft(NumOpsD, Reg)
+		# 		nope3(fname)
 
-		except:
-			nope3(fname)
+		# except:
+		# 	nope3(fname)
 		count = count +1
 
 		o=0
@@ -31103,7 +31756,7 @@ def splash():
 	cat+="   |  | | |   | | (        | (\ (  | |   | | |     |  ( \ \| (        | |   \n"
 	cat+="|\_)  ) | (___) | )        | ) \ \_| (___) | (____/\  /  \ \ (____/\  | |   \n"
 	cat+="(____/  (_______)/         |/   \__(_______|_______/_/    \(_______/  )_(   \n"
-	cat+="\tJOP ROCKET: Honoring Ancient Rocket Cats Everywhere\tv2.1"
+	cat+="\tJOP ROCKET: Honoring Ancient Rocket Cats Everywhere\tv2.11"
 
 	print bomb+ cat1+cat
 
@@ -31120,9 +31773,9 @@ showOptions()
 # setMitigationsAvoidUI()
 UI()
 
-yes =9995
+yes =9992
 
-if yes == 9992:
+if yes == 99932:
 	# get_OP_CALL_EDX(NumOpsD)
 	# get_OP_JMP_EDX(NumOpsD)
 	Regs =["EAX","EBX","ECX","EDX","ESI","EDI","EBP","ESP"]
@@ -31130,6 +31783,9 @@ if yes == 9992:
 	getJMP = True
 	# print ("enter R")
 	runIt()
+	# Regs = ["EDX"]
+	# getCALL = False
+	# get_OP_JMP_EDX(NumOpsD)
 	printlistOP_JMP_PTR_EMPTY(NumOpsD)
 	printlistOP_MovDeref(NumOpsD, "EAX")
 	printlistOP_MovDeref(NumOpsD, "EBX")
@@ -31139,12 +31795,14 @@ if yes == 9992:
 	printlistOP_MovDeref(NumOpsD, "ESI")
 	printlistOP_MovDeref(NumOpsD, "EBP")
 	printlistOP_MovDeref(NumOpsD, "EBP")
+	printlistOP_Cmpsd(NumOpsD)
+	printlistOP_Lodsd(NumOpsD)
+	printlistOP_Movsd(NumOpsD)
+	printlistOP_Scasd(NumOpsD)
+	printlistOP_Stosd(NumOpsD)
+	printlistOP_JMP_ECX(NumOpsD)
 	print "done"
 if yes ==999:
-
-	# desired = 0x1120
-	# desiredMax = 0x1400
-
 	findEvilImports()
 	initVPVA()
 	doFinalVA(numVPAA)
