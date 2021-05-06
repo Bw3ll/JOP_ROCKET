@@ -79,7 +79,14 @@ byt3.append(2196)
 #desired
 
 desired=113.0 #113.0   #190
-desiredMax=336.0 #337.0
+desiredMax=333.0 #337.0
+# desired=401.0 #113.0   #190
+# desiredMax=2001.0 #337.0    
+#######NOTE: perfect max is broken - have an odd number, to ensure imperfect success (padding)
+
+
+# desired = 0x1120
+# desiredMax = 0x1400
 
 truthLimit=3
 PerfectOutputs=[]

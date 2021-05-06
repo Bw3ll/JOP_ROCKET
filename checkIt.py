@@ -759,6 +759,7 @@ def splitter(stringReplace):
 	new2 = new.split(")")
 	return new2[0]
 def countLines(line):
+	# print ("line", line )
 	array = line.split("#")
 	x=0
 	for line in array:
@@ -896,15 +897,78 @@ def stupidPreJ(val2, num):
 	# for i in val2: #   #was +1
 	#	print i
 		# print "t: " + str(t) + " x: " + x
-		matchObj3 = re.compile( r'\bcall\b|\bjmp\b|\bjo\b|\bjno\b|\bjsn\b|\bjs\b|\bje\b|\bjz\b|\bjne\b|\bjnz\b|\bjb\b|\bjnae\b|\bjc\b|\bjnb\b|\bjae\b|\bjnc\b|\bjbe\b|\bjna\b|\bja\b|\bjnben\b|\bjl\b|\bjnge\b|\bjge\b|\bjnl\b|\bjle\b|\bjng\b|\bjg\b|\bjnle\b|\bjp\b|\bjpe\b|\bjnp\b|\bjpo\b|\bjczz\b|\bjecxz\b|\bjmp\b|\bint\b|\bretf\b|\bdb\b|\bhlt\b|\bloop\b|\bret\b|\bleave\b|\bint3\b|\binsd\b|\bptr\b')
+		# matchObj3 = re.compile( r'\bcall\b|\bjmp\b|\bjo\b|\bjno\b|\bjsn\b|\bjs\b|\bje\b|\bjz\b|\bjne\b|\bjnz\b|\bjb\b|\bjnae\b|\bjc\b|\bjnb\b|\bjae\b|\bjnc\b|\bjbe\b|\bjna\b|\bja\b|\bjnben\b|\bjl\b|\bjnge\b|\bjge\b|\bjnl\b|\bjle\b|\bjng\b|\bjg\b|\bjnle\b|\bjp\b|\bjpe\b|\bjnp\b|\bjpo\b|\bjczz\b|\bjecxz\b|\bjmp\b|\bint\b|\bretf\b|\bdb\b|\bhlt\b|\bloop\b|\bret\b|\bleave\b|\bint3\b|\binsd\b|\bptr\b')
 
 
-		if matchObj3.search(x):
+		# if matchObj3.search(x):
+		matchObj3 = re.search( r'\bcall\b|\bjmp\b|\bjo\b|\bjno\b|\bjsn\b|\bjs\b|\bje\b|\bjz\b|\bjne\b|\bjnz\b|\bjb\b|\bjnae\b|\bjc\b|\bjnb\b|\bjae\b|\bjnc\b|\bjbe\b|\bjna\b|\bja\b|\bjnben\b|\bjl\b|\bjnge\b|\bjge\b|\bjnl\b|\bjle\b|\bjng\b|\bjg\b|\bjnle\b|\bjp\b|\bjpe\b|\bjnp\b|\bjpo\b|\bjczz\b|\bjecxz\b|\bjmp\b|\bint\b|\bretf\b|\bdb\b|\bhlt\b|\bloop\b|\bret\b|\bleave\b|\bint3\b|\binsd\b', x, re.M|re.I)
+
+		if matchObj3:
 			bad = bad + 1
 			if bad < 2:
 				# print "bad2 " + str(t) + " x: " + x
 				res.append(str(x))
+			if bad > 1:   ###### WAS 1 - missing small ones - fixed it - 2 - not sure original logic behind this
+				# print "bad3 "  + str(t) + " x: " + x
+				# print  matchObj3.search(x)
+				return False
+		else:	
+			if bad < 2 : 
+				res.append(x)
+		t+=1
+		if limit == t:
+			# print "return True" 
+			return True
+	# print "res: " + str(len(res))
+	# for x in res:
+	# 	print x
+	# print "return True2" 
+	return True
+
+def stupidPreJk(val2, num):
+	global cutting
+	res = []
+	bad = 0
+	# print "***********PRESTUPIDJ"
+
+	start = re.match( r'\bjmp\b|\bcall\b', val2[0], re.M|re.I)
+	if not start:
+		# print "opps2!"
+		val2.reverse()
+	t=0
+
+	if splitter(val2[0]) < splitter(val2[len(val2)-1]):
+		# print "jrev"
+		val2.reverse()
+	else:
+		# print "no rev"
+		pass
+
+
+	limit=num#len(val2)-(num)
+	# print "limit "  + str(limit) + " num: " + str(num) + " size: " + str(len(val2))
+	print ("length", len(val2))
+	for x in val2:
+	# for i in val2: #   #was +1
+	#	print i
+		# print "t: " + str(t) + " x: " + x
+		print x
+		print ("Bad",bad)
+		# matchObj3 = re.compile( r'\bcall\b|\bjmp\b|\bjo\b|\bjno\b|\bjsn\b|\bjs\b|\bje\b|\bjz\b|\bjne\b|\bjnz\b|\bjb\b|\bjnae\b|\bjc\b|\bjnb\b|\bjae\b|\bjnc\b|\bjbe\b|\bjna\b|\bja\b|\bjnben\b|\bjl\b|\bjnge\b|\bjge\b|\bjnl\b|\bjle\b|\bjng\b|\bjg\b|\bjnle\b|\bjp\b|\bjpe\b|\bjnp\b|\bjpo\b|\bjczz\b|\bjecxz\b|\bjmp\b|\bint\b|\bretf\b|\bdb\b|\bhlt\b|\bloop\b|\bret\b|\bleave\b|\bint3\b|\binsd\b|\bptr\b'))
+
+
+		# matchObj3 =re.search(x)
+		matchObj3 = re.search( r'\bcall\b|\bjmp\b|\bjo\b|\bjno\b|\bjsn\b|\bjs\b|\bje\b|\bjz\b|\bjne\b|\bjnz\b|\bjb\b|\bjnae\b|\bjc\b|\bjnb\b|\bjae\b|\bjnc\b|\bjbe\b|\bjna\b|\bja\b|\bjnben\b|\bjl\b|\bjnge\b|\bjge\b|\bjnl\b|\bjle\b|\bjng\b|\bjg\b|\bjnle\b|\bjp\b|\bjpe\b|\bjnp\b|\bjpo\b|\bjczz\b|\bjecxz\b|\bjmp\b|\bint\b|\bretf\b|\bdb\b|\bhlt\b|\bloop\b|\bret\b|\bleave\b|\bint3\b|\binsd\b', x, re.M|re.I)
+
+		if matchObj3:
+			bad = bad + 1
+			print ("adding bad", bad, x)
+			if bad < 2:
+				# print "bad2 " + str(t) + " x: " + x
+				res.append(str(x))
 			if bad > 1:
+
+				print ("FALSEY", bad)
 				# print "bad3 "  + str(t) + " x: " + x
 				# print  matchObj3.search(x)
 				return False
@@ -1121,8 +1185,121 @@ def paddingMaker1( a):
 
 	if a ==0:
 		text="\t\t0x41424142, #\t padding for dispatch table ( 0x4 bytes)\n"
+		#### Remove do not use
+		text = ""
+		# a=0
+	# text = "\t\tJOP_Pad, # \t padding for dispatch table (" + str(hex((c))) + " bytes)\n"
+	# if a ==0:
+		# text = "\t\tJOP_Pad, # \t padding for dispatch table\n"
+	return text
+def paddingMaker1DG( a, dgFound):
+	c=a
+	text2=""
+	text="\t\t"
+	if (a>3):
+		try:
+			b=a/4
+		except:
+			b=0
+			a=0
+		try:
+			modb= a % 4  # modulo, remainder
+		except:
+			modb=0
+	else:
+		b=0
+		modb =a %4
+	text+=b*"0x42424242, "
+	if modb >0:
+		text+="0x" + modb*"43" + ","
+	# x=(len(text))
+	# text=text[0:(x-2)] # fix my
+	text3="\t# padding  (" + str(hex((c))) + " bytes)\n"
+	text +=text2 + text3
+
+	if a ==0:
+		# text="\t\t0x41424142, #\t padding for dispatch table ( 0x4 bytes)\n"
+		#### Remove do not use
+		text = ""
+		# a=0
+	# text = "\t\tJOP_Pad, # \t padding for dispatch table (" + str(hex((c))) + " bytes)\n"
+	# if a ==0:
+		# text = "\t\tJOP_Pad, # \t padding for dispatch table\n"
+	if not dgFound:
+		text = "\t\t0x45454545, # \t No DG found - placeholder padding (4 bytes)\n"
+	return text
+def paddingMaker1_var( a, dgFound):
+	c=a
+	text2=""
+	text="\t\t"
+	if (a>3):
+		try:
+			b=a/4
+		except:
+			b=0
+			a=0
+		try:
+			modb= a % 4  # modulo, remainder
+		except:
+			modb=0
+	else:
+		b=0
+		modb =a %4
+	text+=b*"0x42424242, "
+	if modb >0:
+		text+="0x" + modb*"43" + ","
+	# x=(len(text))
+	# text=text[0:(x-2)] # fix my
+	text3="\t# padding  (" + str(hex((c))) + " bytes)\n"
+	text +=text2 + text3
+
+	# if a ==0:
+	# 	text="\t\t0x41424142, #\t padding for dispatch table ( 0x4 bytes)\n"
+	# 	#### Remove do not use
+	# 	text = ""
+	# 	# a=0
+	# text = "\t\tJOP_Pad, # \t padding for dispatch table (" + str(hex((c))) + " bytes)\n"
+	if a ==0:
+		# text = "\t\tskip, # \t padding for dispatch table\n"
+		text = ""
+	if not dgFound:
+		text = "\t\t0x45454545, # \t No DG found - placeholder padding (4 bytes)\n"
 	return text
 
+def paddingMaker1_varH( a):
+	c=a
+	text2=""
+	text="\t\t"
+	if (a>3):
+		try:
+			b=a/4
+		except:
+			b=0
+			a=0
+		try:
+			modb= a % 4  # modulo, remainder
+		except:
+			modb=0
+	else:
+		b=0
+		modb =a %4
+	text+=b*"0x42424242, "
+	if modb >0:
+		text+="0x" + modb*"43" + ""
+	# x=(len(text))
+	# text=text[0:(x-2)] # fix my
+	# text3="\t# padding  (" + str(hex((c))) + " bytes)\n"
+	# text +=text2 + text3
+
+	if a ==0:
+		text="\t\t0x41424142 #\t padding for dispatch table ( 0x4 bytes)\n"
+		#### Remove do not use
+		text = ""
+		# a=0
+	# text = "\t\tJOP_Pad, # \t padding for dispatch table (" + str(hex((c))) + " bytes)\n"
+	# if a ==0:
+		# text = "\t\tJOP_Pad, # \t padding for dispatch table\n"
+	return text
 
 # print paddingMaker1(6)
 

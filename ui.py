@@ -9,11 +9,11 @@ RegsDG =[]
 RegsPrint =[]
 Input = []
 CF = []
-IA86 =["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EDI", "EBP", "ESP"]
-RegsVP=["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EDI", "EBP", "ESP"]
-IA862 =["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EDI", "EBP", "ESP"]
+IA86 =["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EBP", "ESP"]
+RegsVP=["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EBP", "ESP"]
+IA862 =["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EBP", "ESP"]
 CF2 = ["JMP", "CALL", "ALL"]
-InputAcceptable = ["ja", "jb", "jc", "jd", "jdi","jsi", "jbp", "jsp", "j", "c", "ca","cb", "cc", "cd", "cdi", "csi","cbp", "csp", "pja", "pjb", "pjc", "pjd", "pjdi","pjsi", "pjbp", "pjsp", "pj", "pc", "pca","pcb", "pcc", "pcd", "pcdi", "pcsi","pcbp", "pcsp","ma", "a", "s", "m","d", "move", "mov", "movv", "movs","l", "xc", "st", "po", "pu","id", "inc", "dec", "bit", "sl","sr", "rr", "rl", "all", "rec","da", "db", "dc", "dd", "ddi","dsi", "dbp", "dis","ba", "bb", "bc", "bd", "bdi","bsi", "bbp", "bdis","oa", "ob", "oc", "od", "odi","osi", "obp", "odis", "stack", "deref", "emp","dplus"] #,"", "", "", "", "","", "", "", "", "","", "", "", "", "","", "", "", "", "","", "", "", "", "",
+InputAcceptable = ["ja", "jb", "jc", "jd", "jdi","jsi", "jbp", "jsp", "j", "c", "ca","cb", "cc", "cd", "cdi", "csi","cbp", "csp", "pja", "pjb", "pjc", "pjd", "pjdi","pjsi", "pjbp", "pjsp", "pj", "pc", "pca","pcb", "pcc", "pcd", "pcdi", "pcsi","pcbp", "pcsp","ma", "a", "s", "m","d", "move", "mov", "movv", "movs","l", "xc", "st", "po", "pu","id", "inc", "dec", "bit", "sl","sr", "rr", "rl", "all", "rec","da", "db", "dc", "dd", "ddi","dsi", "dbp", "dis","ba", "bb", "bc", "bd", "bdi","bsi", "bbp", "bdis","oa", "ob", "oc", "od", "odi","osi", "obp", "odis", "stack", "deref", "emp","dplus", "mit"] #,"", "", "", "", "","", "", "", "", "","", "", "", "", "","", "", "", "", "","", "", "", "", "",
 
 NumOpsD = 13    # 13
 linesGoBack = 4
@@ -39,9 +39,10 @@ def showOptions():
 	options += "g: Discover or get gadgets; this gets gadgets ending in *specified* registers.\n"
 	options += "G: Discover or get gadgets ending in JMP; this gets ALL registers. (NEW)\n"
 	options += "Z: Discover or get gadgets ending in JMP & CALL; this gets ALL registers. (NEW)\n"
-
+	options += "C: Discover or get gadgets ending in CALL; this gets ALL registers. (NEW)\n"
 	# options += "d: Get d. gadgets, e.g. by REG or ALL.\n"
 	options += "p: Print sub-menu.E.g. Print ALL, all by REG, by operation, etc.\n"
+	options += "M: Mitigations sub-menu.E.g. DEP, ASLR, SafeSEH, CFG.\n"
 	options += "D: Set level of depth for d. gadgets.\n"
 	options += "m: Extract the modules for specified registers.\n"
 	options += "n: Change number of opcodes to disassemble.\n"
@@ -51,9 +52,11 @@ def showOptions():
 	# options += "b: Hash boring redundancy limit. See detailed: u-h\n"  # RETIRED
 	options += "a: Do 'everything' for selected PE and modules. Does not build chains.\n"
 	options += "w: Show mitigations for PE and ennumerated modules.\n"
+	options += "b: Show or add bad characters.\n"
 	options += "v: Generates CSV of all operations from all modules.\n"
 	options += "c: Clears everything.\n"
 	options += "k: Clears selected DLLs.\n"
+	options += "i: change imagebase for the image executable\n"
 	options += "y: Useful information.\n"
 	options += "q: Credits\n"
 	options += "x: exit.\n"
@@ -108,8 +111,8 @@ def showPrintOptions():
 	options +="r - Set registers to print\n"  # options ="Clear all Options\n" have this as option
 	options +="\t**You must specify the registers to print.**\n"
 	options +="C - Clear all selected operations\n"
+	options +="mit - Print Mitigations for scanned modules\n"  # options ="Clear all Options\n" have this as option
 	options +="x - Exit print menu\n\n"  # options ="Clear all Options\n" have this as option
-
 	options +="dis - Print all d. gadgets\tbdis - Print all the BEST d. gadgets\n"	
 	options +="odis - Print all other d. gadgets\t\n\n"	
 	options +="da - Print d. gadgets for EAX\t\tba - Print best d. gadgets for EAX\n"	

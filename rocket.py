@@ -21,7 +21,9 @@ from stackpivot import *
 from checkIt import *
 # from printing import *
 NewCounter = 0
+emp=""
 
+CheckallModules = False
 numArgs = len(sys.argv)
 peName = ''#'filezilla.exe'  # hardcoded for testing, made irrelevant if supplied with 
 modName = peName
@@ -43,8 +45,19 @@ VPl = []
 VAl=[]
 GPAl=[]
 MAl=[]
-badChars = ["zz"]
+badChars = []
+offsetStyle=True
 fname=""
+Mitigations =[] # tuple 
+avoidDEP  = False
+avoidASLR = False
+avoidSEH = False
+avoidCFG = False
+printStyle = True
+
+filePrintData=""
+tempBuffer=""
+bufCount=0
 
 
 numVPAA = 5
@@ -79,12 +92,18 @@ if numArgs > 1:			# to get full functionality, need to put file location for bin
 		pass
 PEtemp = PE_path + "/"+ peName
 
-if skipPath == True:
-	pe = pefile.PE(PEtemp)
-if skipPath == False:
-	pe = pefile.PE(peName)
+# if skipPath == True:
+# 	pe = pefile.PE(PEtemp)
+# if skipPath == False:
+# 	pe = pefile.PE(peName)
 
+pe = "pe file"
 directory =""
+directory="outputs\\"
+test="outputs2"
+directory=test+"\\"
+
+directory = peName[:-4] +"\\"
 newpath =""
 index = 0
 PE_DLL = []
@@ -96,6 +115,7 @@ DLL_Protect = []
 PE_Protect =""
 o = 0
 #objs[o].data2 = objs[o].pe.sections[0].get_data()[0:4]
+
 cs = Cs(CS_ARCH_X86, CS_MODE_32)
 CheckallModules = False
 getJMP = True
@@ -187,6 +207,7 @@ printDispatcherEDXOther = False
 printDispatcherEDIOther = False
 printDispatcherESIOther = False
 printDispatcherEBPOther = False
+printMitigations = False
 DoEverything = False
 #VirtualAdd = objs[o].VirtualAdd
 #ImageBase = pe.OPTIONAL_HEADER.ImageBase
@@ -212,6 +233,7 @@ total2 = 0
 levelTwo = False
 bit32 = True
 hashCheckVal = 4
+
 
 if skipPath == False:
 	PEtemp = peName
@@ -1262,8 +1284,17 @@ obj = MyBytes()
 obj._init_()
 objs.append(obj)
 
+
+
 def noApi_MS(DLLs):
 	global Remove
+	global PE_DLLS
+
+	# if "kernel32.dll" or "KERNEL32.dll" or "Kernel32.dll" not in PE_DLLS:
+	# 	PE_DLLS.append("kernel32.dll")
+	# if "kernelbase.dll" or "KERNELBASE.dll" or "Kernelbase.dll" not in PE_DLLS:
+	# 	PE_DLLS.append("kernelbase.dll")
+		
 	for dll in DLLs:
 		matchObj = re.match( r'\bapi-ms\b', dll, re.M|re.I) # This is in system32 or wow64 /downlevel - not typically loaded at start. This is found by recursively searching imports and more likely than not will not be loaded right away. Thus, it is excluded.
 		if matchObj:
@@ -1271,6 +1302,13 @@ def noApi_MS(DLLs):
 		matchObj = re.match( r'\bpython\b', dll, re.M|re.I)  # Typically this is an error from not finding the correct  file location
 		if matchObj:
 			Remove.append(dll)
+			# if dll_1 not in DLLs:
+			# 	DLLs.append(dll_1)
+			# if dll_2 not in DLLs:
+			# DLLs.append(dll_2)
+	Answer	= set(PE_DLLS) - set(Remove)
+	PE_DLLS = list(Answer)
+
 def listReducer(dlls):	
 	fun2=  list(OrderedDict.fromkeys(dlls))
 	return fun2
@@ -1295,18 +1333,29 @@ def getDLLs2(dll):
 		if entry.dll == "WSOCK32.dll":
 			name = "ws2_32.dll"
 		PE_DLLS.append(name)
-def extractDLLNew(dllName):
+
+
+def extractDLLNew(dllName, extractingDll):
 	global o
 	global index
 	global  newpath
 	global ans
 	global PE_Protect
 	global PE_path
+	global pe
+	global Mitigations
 		# A very small portin of this loadlibrary comes from: https://www.programcreek.com/python/example/53932/ctypes.wintypes.HANDLE
 		# All of the elaborate loading through alternate means is entirely original
 	#index = 0
-	print dllName
-#remove if could not be found
+	print dllName + " **"
+	skipMe = False
+	kernelbaseDone=False
+	kernel32Done=False
+	dllCheck = re.match( r'\bapi-ms\b', dllName, re.M|re.I) 
+	pe=""
+	if dllCheck:
+		skipMe=True
+
 	try:
 		dllHandle = win32api.LoadLibraryEx(dllName, 0, win32con.LOAD_LIBRARY_AS_DATAFILE)
 		windll.kernel32.GetModuleHandleW.restype = wintypes.HMODULE
@@ -1317,6 +1366,7 @@ def extractDLLNew(dllName):
 		module_path = wintypes.create_unicode_buffer(255)
 		windll.kernel32.GetModuleFileNameW(h_module_base, module_path, 255)
 		pe = pefile.PE(module_path.value)
+
 		win32api.FreeLibrary(dllHandle)
 
 		if h_module_base is None:
@@ -1326,6 +1376,8 @@ def extractDLLNew(dllName):
 			if os.path.exists(newpath):
 				module_path.value = newpath
 				ans = newpath
+				pe = pefile.PE(newpath)
+
 			else:
 				if bit32:
 					directory = r'C:\Windows\SysWOW64'
@@ -1333,6 +1385,7 @@ def extractDLLNew(dllName):
 					if os.path.exists(newpath):
 						module_path.value = newpath
 						ans = newpath
+						pe = pefile.PE(newpath)
 					else:
 						print "\t\tNote: " + dllName + " will be excluded. Please scan this manually if needed."
 						Remove.append(dllName)
@@ -1342,28 +1395,45 @@ def extractDLLNew(dllName):
 					if os.path.exists(newpath):
 						module_path.value = newpath
 						ans = newpath
+						pe = pefile.PE(newpath)
 					else:
 						print "\t\tNote: " + dllName + " will be excluded. Please scan this manually if needed."
 						Remove.append(dllName)
 		head, tail = os.path.split(module_path.value)
+
 		if tail != dllName:
 			print "\tNote: " + str(tail) + " is being searched instead of " + dllName + "."
+			
 			PE_DLLS[index] = tail
 			Remove.append(dllName)
-		ans = module_path.value
+			dllName=tail
 
-		objs[o].protect = str(dllName) + "\t"
-		objs[o].depStatus = "\tDEP: " + str(dep())
-		objs[o].aslrStatus = "\tASLR: " + str(aslr())
-		objs[o].sehSTATUS = "\tSAFESEH: " + str(seh())
-		objs[o].CFGstatus = "\tCFG: " + str(CFG())
-		objs[o].protect = objs[o].protect + objs[o].depStatus + objs[o].aslrStatus + objs[o].sehSTATUS + objs[o].CFGstatus
-		DLL_Protect.append(objs[o].protect)
-		PE_Protect = PE_Protect + str(objs[o].protect)
-		print objs[o].protect
+			# if skipMe==False:
+			addMitigations(dllName, dep(), aslr(), seh(), CFG())
+		
+		ans = module_path.value
+		
+		if skipMe==False and extractingDll:
+			addMitigationsObj(dllName, dep(), aslr(), seh(), CFG())
 
 		index += 1
 	except:
+		try:
+			new= PE_path+"\\"+dllName
+			print  new
+			if os.path.exists(new):
+				pe = pefile.PE(new)
+				addMitigations(dllName, dep(), aslr(), seh(), CFG())
+				vv=pe.sections[0].Misc_VirtualSize
+				print "Size: " + str(hex(vv))
+				print  "\t* " + str(new)
+				return new
+			newpath = os.path.abspath(os.path.join(PE_path, dllName))
+			print newpath
+			if os.path.exists(newpath):
+				ans = os.path.abspath(os.path.join(directory, dllName))
+		except:
+			pass
 		directory = r'C:\Program Files\testing'  #hardcoded testing, made irrelevant by next line
 		directory = PE_path
 		newpath = os.path.abspath(os.path.join(directory, dllName))
@@ -1375,6 +1445,7 @@ def extractDLLNew(dllName):
 				newpath = os.path.abspath(os.path.join(directory, dllName))
 				if os.path.exists(newpath):
 					ans = os.path.abspath(os.path.join(directory, dllName))
+					pe = pefile.PE(newpath)
 				else:
 					print "\t\tNote: " + dllName + " will be excluded. Please scan this manually if needed."
 					Remove.append(dllName)
@@ -1383,48 +1454,63 @@ def extractDLLNew(dllName):
 				newpath = os.path.abspath(os.path.join(directory, dllName))
 				if os.path.exists(newpath):
 					ans = os.path.abspath(os.path.join(directory, dllName))
+					pe = pefile.PE(newpath)
 				else:
 					print "\t\tNote: " + dllName + " will be excluded. Please scan this manually if needed."
 					Remove.append(dllName)
-
-		objs[o].protect = str(dllName) + "\t"
-		objs[o].depStatus = "\tDEP: " + str(dep())
-		objs[o].aslrStatus = "\tASLR: " + str(aslr())
-		objs[o].sehSTATUS = "\tSAFESEH: " + str(seh())
-		objs[o].CFGstatus = "\tCFG: " + str(CFG())
-		objs[o].protect = objs[o].protect + objs[o].depStatus + objs[o].aslrStatus + objs[o].sehSTATUS + objs[o].CFGstatus
-		DLL_Protect.append(objs[o].protect)
-
-		PE_Protect = PE_Protect + str(objs[o].protect)
-		print objs[o].protect
+		if skipMe==False and extractingDll:
+			addMitigationsObj(dllName, dep(), aslr(), seh(), CFG())
+			print objs[o].protect
 
 		index += 1
 		pass
+	if skipMe==False:
+		addMitigations(dllName, dep(), aslr(), seh(), CFG())
 	print  "\t* " + str(ans)
 	return ans
+
 
 def digDeeper(PE_DLL):
 	global PE_DLLS2
 	print ""#"in dig deeper"
-	print PE_DLL
+	# print PE_DLLS
+	global pe
 	sp()
- 	for dll in PE_DLL:
+ 	for dll in PE_DLLS:
  		newpath = ""
- 		print newpath
+ 		# print newpath
  		sp()
- 		newpath = extractDLLNew(dll)
- 		print newpath
+ 		# print ("dll here", dll)
+ 		try:
+ 			newpath = extractDLLNew(dll, False)
+ 		except:
+ 			pass
+ 		# print newpath
  		sp()
  		pe = pefile.PE(newpath)
 		name = ""
+		# try:
+		# 	for entry in pe.DIRECTORY_ENTRY_IMPORT:
+		# 		print (dll, entry.dll)
+		# except:
+		# 	# print "my error"
+		# 	pass
 		try:
 			for entry in pe.DIRECTORY_ENTRY_IMPORT:
+				# print (dll, "entry", entry.dll)
 				name = entry.dll
 				if entry.dll == "WSOCK32.dll":
 					name = "ws2_32.dll"
-				PE_DLLS2.append(name)
-		except:
+				matchObj = re.match( r'\bapi-ms\b', name, re.M|re.I)
+				if not matchObj:
+					# PE_DLLS2.append(name)
+					addPE_DLLS2(name)
+		except Exception as e:
+			print "Error: loading dll, dig deeper"
+			print e
 			pass
+	# print ("pe_dlls #2")
+	# print (PE_DLLS2)
 def moreDLLs(): 
 	global PE_DLLS
 	global PE_DLLS2
@@ -1435,14 +1521,28 @@ def moreDLLs():
 		print PE_DLLS
 		sp()
 		digDeeper(PE_DLLS)
+		# print ("after deeper")
 		i=0
 		PE_DLLS2 = listReducer(PE_DLLS2)
+		# for dll in PE_DLLS2:
+		# 	test = extractDLL(PE_DLLS2[i])
+		# 	i +=1
+		i=0
 		for dll in PE_DLLS2:
-			test = extractDLL(PE_DLLS2[i])
+			# print ("i", i)
+			try:
+				test = extractDLLNew(PE_DLLS2[i], False)
+			except:
+				pass
+			head, tail = os.path.split(test)
+			modName = tail
 			i +=1
+
 		PE_DLLS2 = listReducer(PE_DLLS2)
 		PE_DLLS.extend(PE_DLLS2)
 		PE_DLLS = listReducer(PE_DLLS)
+
+
 def clearHashChecker():
 	hashchecker[:]=[]
 	hashcheckerPre[:]=[]
@@ -1652,6 +1752,377 @@ def clearAllObject(): #4
 	o=0
 	print "Clearing complete."
 	sp()
+
+
+
+def stripWhite(str1):
+	str1=str1.lstrip('\x00')
+	str1=str1.lstrip('\x0a')
+	str1=str1.lstrip('\x0d')
+	str1=str1.rstrip('\x00')
+	str1=str1.rstrip('\x0a')
+	str1=str1.rstrip('\x0d')
+	return str1
+
+def addListBaseNewJmp(address, valCount, NumOpsDis, modName, reg):
+	# print("addlistbasenew reg = " + reg)
+
+	if(reg == "eax"):
+		# print("adding eax")
+		objs[o].listOP_JMP_EAX2.append(address)
+		objs[o].listOP_JMP_EAX_CNT.append(valCount)
+		objs[o].listOP_JMP_EAX_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_EAX_Module.append(modName)
+
+
+	elif(reg == "ebx"):
+		# print("adding ebx")
+		objs[o].listOP_JMP_EBX.append(address)
+		objs[o].listOP_JMP_EBX_CNT.append(valCount)
+		objs[o].listOP_JMP_EBX_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_EBX_Module.append(modName)
+
+	elif(reg == "ecx"):
+		# print("adding ecx")
+		objs[o].listOP_JMP_ECX.append(address)
+		objs[o].listOP_JMP_ECX_CNT.append(valCount)
+		objs[o].listOP_JMP_ECX_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_ECX_Module.append(modName)
+
+	elif(reg == "edx"):
+		# print("adding edx")
+		objs[o].listOP_JMP_EDX.append(address)
+		objs[o].listOP_JMP_EDX_CNT.append(valCount)
+		objs[o].listOP_JMP_EDX_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_EDX_Module.append(modName)
+
+	elif(reg == "edi"):
+		# print("adding edi")
+		objs[o].listOP_JMP_EDI.append(address)
+		objs[o].listOP_JMP_EDI_CNT.append(valCount)
+		objs[o].listOP_JMP_EDI_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_EDI_Module.append(modName)
+
+	elif(reg == "esi"):
+		# print("adding esi")
+		objs[o].listOP_JMP_ESI.append(address)
+		objs[o].listOP_JMP_ESI_CNT.append(valCount)
+		objs[o].listOP_JMP_ESI_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_ESI_Module.append(modName)
+
+	elif(reg == "ebp"):
+		# print("adding ebp")
+		objs[o].listOP_JMP_EBP.append(address)
+		objs[o].listOP_JMP_EBP_CNT.append(valCount)
+		objs[o].listOP_JMP_EBP_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_EBP_Module.append(modName)
+
+	elif(reg == "esp"):
+		# print("adding esp")
+		objs[o].listOP_JMP_ESP.append(address)
+		objs[o].listOP_JMP_ESP_CNT.append(valCount)
+		objs[o].listOP_JMP_ESP_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_ESP_Module.append(modName)
+
+def addListBaseNewJmpPtr(address, valCount, NumOpsDis, modName, reg):
+	# print("addlistbasenewjmpptr reg = " + reg)
+
+	if(reg == "eax"):
+		# print("adding eax")
+		objs[o].listOP_JMP_PTR_EAX.append(address)
+		objs[o].listOP_JMP_PTR_EAX_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_EAX_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_EAX_Module.append(modName)
+
+
+	elif(reg == "ebx"):
+		# print("adding ebx")
+		objs[o].listOP_JMP_PTR_EBX.append(address)
+		objs[o].listOP_JMP_PTR_EBX_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_EBX_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_EBX_Module.append(modName)
+
+	elif(reg == "ecx"):
+		# print("adding ecx")
+		objs[o].listOP_JMP_PTR_ECX.append(address)
+		objs[o].listOP_JMP_PTR_ECX_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_ECX_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_ECX_Module.append(modName)
+
+	elif(reg == "edx"):
+		# print("adding edx")
+		objs[o].listOP_JMP_PTR_EDX.append(address)
+		objs[o].listOP_JMP_PTR_EDX_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_EDX_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_EDX_Module.append(modName)
+
+	elif(reg == "edi"):
+		# print("adding edi")
+		objs[o].listOP_JMP_PTR_EDI.append(address)
+		objs[o].listOP_JMP_PTR_EDI_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_EDI_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_EDI_Module.append(modName)
+
+	elif(reg == "esi"):
+		# print("adding esi")
+		objs[o].listOP_JMP_PTR_ESI.append(address)
+		objs[o].listOP_JMP_PTR_ESI_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_ESI_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_ESI_Module.append(modName)
+
+	elif(reg == "ebp"):
+		# print("adding ebp")
+		objs[o].listOP_JMP_PTR_EBP.append(address)
+		objs[o].listOP_JMP_PTR_EBP_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_EBP_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_EBP_Module.append(modName)
+
+	elif(reg == "esp"):
+		# print("adding esp")
+		objs[o].listOP_JMP_PTR_ESP.append(address)
+		objs[o].listOP_JMP_PTR_ESP_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_ESP_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_ESP_Module.append(modName)
+
+
+def addListBaseNewJmpPtr2(address, valCount, NumOpsDis, modName, reg):
+	# print("addlistbasenewjmpptr2 reg = " + reg)
+
+	if(reg == "eax"):
+		# print("adding eax")
+		objs[o].listOP_JMP_PTR_EMPTY_EAX.append(address)
+		objs[o].listOP_JMP_PTR_EMPTY_EAX_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_EMPTY_EAX_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_EMPTY_EAX_Module.append(modName)
+
+
+	elif(reg == "ebx"):
+		# print("adding ebx")
+		objs[o].listOP_JMP_PTR_EMPTY_EBX.append(address)
+		objs[o].listOP_JMP_PTR_EMPTY_EBX_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_EMPTY_EBX_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_EMPTY_EBX_Module.append(modName)
+
+	elif(reg == "ecx"):
+		# print("adding ecx")
+		objs[o].listOP_JMP_PTR_EMPTY_ECX.append(address)
+		objs[o].listOP_JMP_PTR_EMPTY_ECX_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_EMPTY_ECX_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_EMPTY_ECX_Module.append(modName)
+
+	elif(reg == "edx"):
+		# print("adding edx")
+		objs[o].listOP_JMP_PTR_EMPTY_EDX.append(address)
+		objs[o].listOP_JMP_PTR_EMPTY_EDX_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_EMPTY_EDX_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_EMPTY_EDX_Module.append(modName)
+
+	elif(reg == "edi"):
+		# print("adding edi")
+		objs[o].listOP_JMP_PTR_EMPTY_EDI.append(address)
+		objs[o].listOP_JMP_PTR_EMPTY_EDI_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_EMPTY_EDI_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_EMPTY_EDI_Module.append(modName)
+
+	elif(reg == "esi"):
+		# print("adding esi")
+		objs[o].listOP_JMP_PTR_EMPTY_ESI.append(address)
+		objs[o].listOP_JMP_PTR_EMPTY_ESI_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_EMPTY_ESI_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_EMPTY_ESI_Module.append(modName)
+
+	elif(reg == "ebp"):
+		# print("adding ebp")
+		objs[o].listOP_JMP_PTR_EMPTY_EBP.append(address)
+		objs[o].listOP_JMP_PTR_EMPTY_EBP_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_EMPTY_EBP_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_EMPTY_EBP_Module.append(modName)
+
+	elif(reg == "esp"):
+		# print("adding esp")
+		objs[o].listOP_JMP_PTR_EMPTY_ESP.append(address)
+		objs[o].listOP_JMP_PTR_EMPTY_ESP_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_EMPTY_ESP_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_EMPTY_ESP_Module.append(modName)
+
+
+	elif(reg == "eax_short"):
+		# print("adding eax")
+		objs[o].listOP_JMP_PTR_OTHER_EAX.append(address)
+		objs[o].listOP_JMP_PTR_OTHER_EAX_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_OTHER_EAX_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_OTHER_EAX_Module.append(modName)
+
+
+	elif(reg == "ebx_short"):
+		# print("adding ebx")
+		objs[o].listOP_JMP_PTR_OTHER_EBX.append(address)
+		objs[o].listOP_JMP_PTR_OTHER_EBX_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_OTHER_EBX_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_OTHER_EBX_Module.append(modName)
+
+	elif(reg == "ecx_short"):
+		# print("adding ecx")
+		objs[o].listOP_JMP_PTR_OTHER_ECX.append(address)
+		objs[o].listOP_JMP_PTR_OTHER_ECX_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_OTHER_ECX_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_OTHER_ECX_Module.append(modName)
+
+	elif(reg == "edx_short"):
+		# print("adding edx")
+		objs[o].listOP_JMP_PTR_OTHER_EDX.append(address)
+		objs[o].listOP_JMP_PTR_OTHER_EDX_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_OTHER_EDX_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_OTHER_EDX_Module.append(modName)
+
+	elif(reg == "edi_short"):
+		# print("adding edi")
+		objs[o].listOP_JMP_PTR_OTHER_EDI.append(address)
+		objs[o].listOP_JMP_PTR_OTHER_EDI_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_OTHER_EDI_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_OTHER_EDI_Module.append(modName)
+
+	elif(reg == "esi_short"):
+		# print("adding esi")
+		objs[o].listOP_JMP_PTR_OTHER_ESI.append(address)
+		objs[o].listOP_JMP_PTR_OTHER_ESI_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_OTHER_ESI_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_OTHER_ESI_Module.append(modName)
+
+	elif(reg == "ebp_short"):
+		# print("adding ebp")
+		objs[o].listOP_JMP_PTR_OTHER_EBP.append(address)
+		objs[o].listOP_JMP_PTR_OTHER_EBP_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_OTHER_EBP_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_OTHER_EBP_Module.append(modName)
+
+	elif(reg == "esp_short"):
+		# print("adding esp")
+		objs[o].listOP_JMP_PTR_OTHER_ESP.append(address)
+		objs[o].listOP_JMP_PTR_OTHER_ESP_CNT.append(valCount)
+		objs[o].listOP_JMP_PTR_OTHER_ESP_NumOps.append(NumOpsDis)
+		objs[o].listOP_JMP_PTR_OTHER_ESP_Module.append(modName)
+
+
+def addListBaseNewCall(address, valCount, NumOpsDis, modName, reg):
+	# print("addlistbasenew call reg = " + reg)
+
+	if(reg == "eax"):
+		# print("adding eax")
+		objs[o].listOP_CALL_EAX.append(address)
+		objs[o].listOP_CALL_EAX_CNT.append(valCount)
+		objs[o].listOP_CALL_EAX_NumOps.append(NumOpsDis)
+		objs[o].listOP_CALL_EAX_Module.append(modName)
+
+
+	elif(reg == "ebx"):
+		# print("adding ebx")
+		objs[o].listOP_CALL_EBX.append(address)
+		objs[o].listOP_CALL_EBX_CNT.append(valCount)
+		objs[o].listOP_CALL_EBX_NumOps.append(NumOpsDis)
+		objs[o].listOP_CALL_EBX_Module.append(modName)
+
+	elif(reg == "ecx"):
+		# print("adding ecx")
+		objs[o].listOP_CALL_ECX.append(address)
+		objs[o].listOP_CALL_ECX_CNT.append(valCount)
+		objs[o].listOP_CALL_ECX_NumOps.append(NumOpsDis)
+		objs[o].listOP_CALL_ECX_Module.append(modName)
+
+	elif(reg == "edx"):
+		# print("adding edx")
+		objs[o].listOP_CALL_EDX.append(address)
+		objs[o].listOP_CALL_EDX_CNT.append(valCount)
+		objs[o].listOP_CALL_EDX_NumOps.append(NumOpsDis)
+		objs[o].listOP_CALL_EDX_Module.append(modName)
+
+	elif(reg == "edi"):
+		# print("adding edi")
+		objs[o].listOP_CALL_EDI.append(address)
+		objs[o].listOP_CALL_EDI_CNT.append(valCount)
+		objs[o].listOP_CALL_EDI_NumOps.append(NumOpsDis)
+		objs[o].listOP_CALL_EDI_Module.append(modName)
+
+	elif(reg == "esi"):
+		# print("adding esi")
+		objs[o].listOP_CALL_ESI.append(address)
+		objs[o].listOP_CALL_ESI_CNT.append(valCount)
+		objs[o].listOP_CALL_ESI_NumOps.append(NumOpsDis)
+		objs[o].listOP_CALL_ESI_Module.append(modName)
+
+	elif(reg == "ebp"):
+		# print("adding ebp")
+		objs[o].listOP_CALL_EBP.append(address)
+		objs[o].listOP_CALL_EBP_CNT.append(valCount)
+		objs[o].listOP_CALL_EBP_NumOps.append(NumOpsDis)
+		objs[o].listOP_CALL_EBP_Module.append(modName)
+
+	elif(reg == "esp"):
+		# print("adding esp")
+		objs[o].listOP_CALL_ESP.append(address)
+		objs[o].listOP_CALL_ESP_CNT.append(valCount)
+		objs[o].listOP_CALL_ESP_NumOps.append(NumOpsDis)
+		objs[o].listOP_CALL_ESP_Module.append(modName)
+
+def addListBaseNewCallPTR(address, valCount, NumOpsDis, modName, reg):
+	# print("addlistbasenew call reg = " + reg)
+
+	if(reg == "eax"):
+		# print("adding eax")
+		objs[o].listOP_CALL_PTR_EAX.append(address)
+		objs[o].listOP_CALL_PTR_EAX_CNT.append(valCount)
+		objs[o].listOP_CALL_PTR_EAX_NumOps.append(NumOpsDis)
+		objs[o].listOP_CALL_PTR_EAX_Module.append(modName)
+
+
+	elif(reg == "ebx"):
+		# print("adding ebx")
+		objs[o].listOP_CALL_PTR_EBX.append(address)
+		objs[o].listOP_CALL_PTR_EBX_CNT.append(valCount)
+		objs[o].listOP_CALL_PTR_EBX_NumOps.append(NumOpsDis)
+		objs[o].listOP_CALL_PTR_EBX_Module.append(modName)
+
+	elif(reg == "ecx"):
+		# print("adding ecx")
+		objs[o].listOP_CALL_PTR_ECX.append(address)
+		objs[o].listOP_CALL_PTR_ECX_CNT.append(valCount)
+		objs[o].listOP_CALL_PTR_ECX_NumOps.append(NumOpsDis)
+		objs[o].listOP_CALL_PTR_ECX_Module.append(modName)
+
+	elif(reg == "edx"):
+		# print("adding edx")
+		objs[o].listOP_CALL_PTR_EDX.append(address)
+		objs[o].listOP_CALL_PTR_EDX_CNT.append(valCount)
+		objs[o].listOP_CALL_PTR_EDX_NumOps.append(NumOpsDis)
+		objs[o].listOP_CALL_PTR_EDX_Module.append(modName)
+
+	elif(reg == "edi"):
+		# print("adding edi")
+		objs[o].listOP_CALL_PTR_EDI.append(address)
+		objs[o].listOP_CALL_PTR_EDI_CNT.append(valCount)
+		objs[o].listOP_CALL_PTR_EDI_NumOps.append(NumOpsDis)
+		objs[o].listOP_CALL_PTR_EDI_Module.append(modName)
+
+	elif(reg == "esi"):
+		# print("adding esi")
+		objs[o].listOP_CALL_PTR_ESI.append(address)
+		objs[o].listOP_CALL_PTR_ESI_CNT.append(valCount)
+		objs[o].listOP_CALL_PTR_ESI_NumOps.append(NumOpsDis)
+		objs[o].listOP_CALL_PTR_ESI_Module.append(modName)
+
+	elif(reg == "ebp"):
+		# print("adding ebp")
+		objs[o].listOP_CALL_PTR_EBP.append(address)
+		objs[o].listOP_CALL_PTR_EBP_CNT.append(valCount)
+		objs[o].listOP_CALL_PTR_EBP_NumOps.append(NumOpsDis)
+		objs[o].listOP_CALL_PTR_EBP_Module.append(modName)
+
+	elif(reg == "esp"):
+		# print("adding esp")
+		objs[o].listOP_CALL_PTR_ESP.append(address)
+		objs[o].listOP_CALL_PTR_ESP_CNT.append(valCount)
+		objs[o].listOP_CALL_PTR_ESP_NumOps.append(NumOpsDis)
+		objs[o].listOP_CALL_PTR_ESP_Module.append(modName)
 
 
 def addListBase(address, valCount, NumOpsDis, modName):
@@ -2682,9 +3153,10 @@ def addListBaseXchgEBP(address, valCount, numOps, modName):
 	objs[o].listOP_BaseXchgEBP.append(address)
 	objs[o].listOP_BaseXchgEBP_CNT.append(valCount)
 	objs[o].listOP_BaseXchgEBP_NumOps.append(numOps)
-	objs[o].listOP_BaseXchgEBX_Module.append(modName)
+	objs[o].listOP_BaseXchgEBP_Module.append(modName)
 #LEFT SHIFT
 def addListBaseShiftLeft(address, valCount, numOps, modName):
+	# print ("saving shift left")
 	objs[o].listOP_BaseShiftLeft.append(address)
 	objs[o].listOP_BaseShiftLeft_CNT.append(valCount)
 	objs[o].listOP_BaseShiftLeft_NumOps.append(numOps)
@@ -3032,60 +3504,60 @@ def clearListMovAll():
 	objs[o].listOP_BaseMovEBP[:] = []
 	objs[o].listOP_BaseMovEBP_CNT[:] = []
 	objs[o].listOP_BaseMovEBP_NumOps[:] = []
-	objs[o].listOP_BaseMov_Module = []
-	objs[o].listOP_BaseMovEAX_Module = []
-	objs[o].listOP_BaseMovEBX_Module = []
-	objs[o].listOP_BaseMovECX_Module = []
-	objs[o].listOP_BaseMovEDX_Module = []
-	objs[o].listOP_BaseMovESI_Module = []
-	objs[o].listOP_BaseMovEDI_Module = []
-	objs[o].listOP_BaseMovEBP_Module = []
+	objs[o].listOP_BaseMov_Module [:] = []
+	objs[o].listOP_BaseMovEAX_Module [:] = []
+	objs[o].listOP_BaseMovEBX_Module [:] = []
+	objs[o].listOP_BaseMovECX_Module [:] = []
+	objs[o].listOP_BaseMovEDX_Module [:] = []
+	objs[o].listOP_BaseMovESI_Module [:] = []
+	objs[o].listOP_BaseMovEDI_Module [:] = []
+	objs[o].listOP_BaseMovEBP_Module [:] = []
 
 def clearListBaseMov():
 	objs[o].listOP_BaseMov[:] = []
 	objs[o].listOP_BaseMov_CNT[:] = []
 	objs[o].listOP_BaseMov_NumOps[:] = []
-	objs[o].listOP_BaseMov_Module = []
+	objs[o].listOP_BaseMov_Module[:] = []
 def clearListBaseMovEAX():
 	objs[o].listOP_BaseMovEAX[:] = []
 	objs[o].listOP_BaseMovEAX_CNT[:] = []
 	objs[o].listOP_BaseMovEAX_NumOps[:] = []
-	objs[o].listOP_BaseMovEAX_Module = []
+	objs[o].listOP_BaseMovEAX_Module[:] = []
 def clearListBaseMovEBX():
 	objs[o].listOP_BaseMovEBX[:] = []
 	objs[o].listOP_BaseMovEBX_CNT[:] = []
 	objs[o].listOP_BaseMovEBX_NumOps[:] = []
-	objs[o].listOP_BaseMovEBX_Module = []
+	objs[o].listOP_BaseMovEBX_Module[:] = []
 def clearListBaseMovECX():
 	objs[o].listOP_BaseMovECX[:] = []
 	objs[o].listOP_BaseMovECX_CNT[:] = []
 	objs[o].listOP_BaseMovECX_NumOps[:] = []
-	objs[o].listOP_BaseMovECX_Module = []
+	objs[o].listOP_BaseMovECX_Module[:] = []
 def clearListBaseMovEDX():
 	objs[o].listOP_BaseMovEDX[:] = []
 	objs[o].listOP_BaseMovEDX_CNT[:] = []
 	objs[o].listOP_BaseMovEDX_NumOps[:] = []
-	objs[o].listOP_BaseMovEDX_Module = []
+	objs[o].listOP_BaseMovEDX_Module[:] = []
 def clearListBaseMovESI():
 	objs[o].listOP_BaseMovESI[:] = []
 	objs[o].listOP_BaseMovESI_CNT[:] = []
 	objs[o].listOP_BaseMovESI_NumOps[:] = []
-	objs[o].listOP_BaseMovESI_Module = []
+	objs[o].listOP_BaseMovESI_Module[:] = []
 def clearListBaseMovEDI():
 	objs[o].listOP_BaseMovEDI[:] = []
 	objs[o].listOP_BaseMovEDI_CNT[:] = []
 	objs[o].listOP_BaseMovEDI_NumOps[:] = []
-	objs[o].listOP_BaseMovEDI_Module = []
+	objs[o].listOP_BaseMovEDI_Module[:] = []
 def clearListBaseMovESP():
 	objs[o].listOP_BaseMovESP[:] = []
 	objs[o].listOP_BaseMovESP_CNT[:] = []
 	objs[o].listOP_BaseMovESP_NumOps[:] = []
-	objs[o].listOP_BaseMovESP_Module = []
+	objs[o].listOP_BaseMovESP_Module[:] = []
 def clearListBaseMovEBP():
 	objs[o].listOP_BaseMovEBP[:] = []
 	objs[o].listOP_BaseMovEBP_CNT[:] = []
 	objs[o].listOP_BaseMovEBP_NumOps[:] = []
-	objs[o].listOP_BaseMovEBP_Module = []
+	objs[o].listOP_BaseMovEBP_Module[:] = []
 #mov shuffle
 def clearListMovShufAll():
 	objs[o].listOP_BaseMovShuf[:] = []
@@ -3163,47 +3635,47 @@ def clearListBaseMovShuf():
 	objs[o].listOP_BaseMovShuf[:] = []
 	objs[o].listOP_BaseMovShuf_CNT[:] = []
 	objs[o].listOP_BaseMovShuf_NumOps[:] = []
-	objs[o].listOP_BaseMovShuf_Module = []
+	objs[o].listOP_BaseMovShuf_Module [:] = []
 def clearListBaseMovShufEAX():
 	objs[o].listOP_BaseMovShufEAX[:] = []
 	objs[o].listOP_BaseMovShufEAX_CNT[:] = []
 	objs[o].listOP_BaseMovShufEAX_NumOps[:] = []
-	objs[o].listOP_BaseMovShufEAX_Module = []
+	objs[o].listOP_BaseMovShufEAX_Module [:] = []
 def clearListBaseMovShufEBX():
 	objs[o].listOP_BaseMovShufEBX[:] = []
 	objs[o].listOP_BaseMovShufEBX_CNT[:] = []
 	objs[o].listOP_BaseMovShufEBX_NumOps[:] = []
-	objs[o].listOP_BaseMovShufEBX_Module = []
+	objs[o].listOP_BaseMovShufEBX_Module [:] = []
 def clearListBaseMovShufECX():
 	objs[o].listOP_BaseMovShufECX[:] = []
 	objs[o].listOP_BaseMovShufECX_CNT[:] = []
 	objs[o].listOP_BaseMovShufECX_NumOps[:] = []
-	objs[o].listOP_BaseMovShufECX_Module = []
+	objs[o].listOP_BaseMovShufECX_Module [:] = []
 def clearListBaseMovShufEDX():
 	objs[o].listOP_BaseMovShufEDX[:] = []
 	objs[o].listOP_BaseMovShufEDX_CNT[:] = []
 	objs[o].listOP_BaseMovShufEDX_NumOps[:] = []
-	objs[o].listOP_BaseMovShufEDX_Module = []
+	objs[o].listOP_BaseMovShufEDX_Module [:] = []
 def clearListBaseMovShufESI():
 	objs[o].listOP_BaseMovShufESI[:] = []
 	objs[o].listOP_BaseMovShufESI_CNT[:] = []
 	objs[o].listOP_BaseMovShufESI_NumOps[:] = []
-	objs[o].listOP_BaseMovShufESI_Module = []
+	objs[o].listOP_BaseMovShufESI_Module [:] = []
 def clearListBaseMovShufEDI():
 	objs[o].listOP_BaseMovShufEDI[:] = []
 	objs[o].listOP_BaseMovShufEDI_CNT[:] = []
 	objs[o].listOP_BaseMovShufEDI_NumOps[:] = []
-	objs[o].listOP_BaseMovShufEDI_Module = []
+	objs[o].listOP_BaseMovShufEDI_Module [:] = []
 def clearListBaseMovShufESP():
 	objs[o].listOP_BaseMovShufESP[:] = []
 	objs[o].listOP_BaseMovShufESP_CNT[:] = []
 	objs[o].listOP_BaseMovShufESP_NumOps[:] = []
-	objs[o].listOP_BaseMovShufESP_Module = []
+	objs[o].listOP_BaseMovShufESP_Module [:] = []
 def clearListBaseMovShufEBP():
 	objs[o].listOP_BaseMovShufEBP[:] = []
 	objs[o].listOP_BaseMovShufEBP_CNT[:] = []
 	objs[o].listOP_BaseMovShufEBP_NumOps[:] = []
-	objs[o].listOP_BaseMovShufEBP_Module = []
+	objs[o].listOP_BaseMovShufEBP_Module [:] = []
 #mov value into reg
 def clearListMovValAll():
 	objs[o].listOP_BaseMovVal[:] = []
@@ -3233,59 +3705,59 @@ def clearListMovValAll():
 	objs[o].listOP_BaseMovValEBP[:] = []
 	objs[o].listOP_BaseMovValEBP_CNT[:] = []
 	objs[o].listOP_BaseMovValEBP_NumOps[:] = []
-	objs[o].listOP_BaseMovVal_Module = []
-	objs[o].listOP_BaseMovValEAX_Module = []
-	objs[o].listOP_BaseMovValEBX_Module = []
-	objs[o].listOP_BaseMovValECX_Module = []
-	objs[o].listOP_BaseMovValEDX_Module = []
-	objs[o].listOP_BaseMovValESI_Module = []
-	objs[o].listOP_BaseMovValEDI_Module = []
-	objs[o].listOP_BaseMovValEBP_Module = []
+	objs[o].listOP_BaseMovVal_Module [:] = []
+	objs[o].listOP_BaseMovValEAX_Module [:] = []
+	objs[o].listOP_BaseMovValEBX_Module [:] = []
+	objs[o].listOP_BaseMovValECX_Module [:] = []
+	objs[o].listOP_BaseMovValEDX_Module [:] = []
+	objs[o].listOP_BaseMovValESI_Module [:] = []
+	objs[o].listOP_BaseMovValEDI_Module [:] = []
+	objs[o].listOP_BaseMovValEBP_Module [:] = []
 def clearListBaseMovVal():
 	objs[o].listOP_BaseMovVal[:] = []
 	objs[o].listOP_BaseMovVal_CNT[:] = []
 	objs[o].listOP_BaseMovVal_NumOps[:] = []
-	objs[o].listOP_BaseMovVal_Module = []
+	objs[o].listOP_BaseMovVal_Module [:] = []
 def clearListBaseMovValEAX():
 	objs[o].listOP_BaseMovValEAX[:] = []
 	objs[o].listOP_BaseMovValEAX_CNT[:] = []
 	objs[o].listOP_BaseMovValEAX_NumOps[:] = []
-	objs[o].listOP_BaseMovValEAX_Module = []
+	objs[o].listOP_BaseMovValEAX_Module [:] = []
 def clearListBaseMovValEBX():
 	objs[o].listOP_BaseMovValEBX[:] = []
 	objs[o].listOP_BaseMovValEBX_CNT[:] = []
 	objs[o].listOP_BaseMovValEBX_NumOps[:] = []
-	objs[o].listOP_BaseMovValEBX_Module = []
+	objs[o].listOP_BaseMovValEBX_Module [:] = []
 def clearListBaseMovValECX():
 	objs[o].listOP_BaseMovValECX[:] = []
 	objs[o].listOP_BaseMovValECX_CNT[:] = []
 	objs[o].listOP_BaseMovValECX_NumOps[:] = []
-	objs[o].listOP_BaseMovValECX_Module = []
+	objs[o].listOP_BaseMovValECX_Module [:] = []
 def clearListBaseMovValEDX():
 	objs[o].listOP_BaseMovValEDX[:] = []
 	objs[o].listOP_BaseMovValEDX_CNT[:] = []
 	objs[o].listOP_BaseMovValEDX_NumOps[:] = []
-	objs[o].listOP_BaseMovValEDX_Module = []
+	objs[o].listOP_BaseMovValEDX_Module [:] = []
 def clearListBaseMovValESI():
 	objs[o].listOP_BaseMovValESI[:] = []
 	objs[o].listOP_BaseMovValESI_CNT[:] = []
 	objs[o].listOP_BaseMovValESI_NumOps[:] = []
-	objs[o].listOP_BaseMovValESI_Module = []
+	objs[o].listOP_BaseMovValESI_Module [:] = []
 def clearListBaseMovValEDI():
 	objs[o].listOP_BaseMovValEDI[:] = []
 	objs[o].listOP_BaseMovValEDI_CNT[:] = []
 	objs[o].listOP_BaseMovValEDI_NumOps[:] = []
-	objs[o].listOP_BaseMovValEDI_Module = []
+	objs[o].listOP_BaseMovValEDI_Module [:] = []
 def clearListBaseMovValESP():
 	objs[o].listOP_BaseMovValESP[:] = []
 	objs[o].listOP_BaseMovValESP_CNT[:] = []
 	objs[o].listOP_BaseMovValESP_NumOps[:] = []
-	objs[o].listOP_BaseMovValESP_Module = []
+	objs[o].listOP_BaseMovValESP_Module [:] = []
 def clearListBaseMovValEBP():
 	objs[o].listOP_BaseMovValEBP[:] = []
 	objs[o].listOP_BaseMovValEBP_CNT[:] = []
 	objs[o].listOP_BaseMovShufEBP_NumOps[:] = []
-	objs[o].listOP_BaseMovValEBP_Module = []
+	objs[o].listOP_BaseMovValEBP_Module [:] = []
 #LEA
 def clearListLeaAll():
 	objs[o].listOP_BaseLea[:] = []
@@ -3315,59 +3787,59 @@ def clearListLeaAll():
 	objs[o].listOP_BaseLeaEBP[:] = []
 	objs[o].listOP_BaseLeaEBP_CNT[:] = []
 	objs[o].listOP_BaseLeaEBP_NumOps[:] = []
-	objs[o].listOP_BaseLea_Module = []
-	objs[o].listOP_BaseLeaEAX_Module = []
-	objs[o].listOP_BaseLeaEBX_Module = []
-	objs[o].listOP_BaseLeaECX_Module = []
-	objs[o].listOP_BaseLeaEDX_Module = []
-	objs[o].listOP_BaseLeaESI_Module = []
-	objs[o].listOP_BaseLeaEDI_Module = []
-	objs[o].listOP_BaseLeaEBP_Module = []
+	objs[o].listOP_BaseLea_Module [:] = []
+	objs[o].listOP_BaseLeaEAX_Module [:] = []
+	objs[o].listOP_BaseLeaEBX_Module [:] = []
+	objs[o].listOP_BaseLeaECX_Module [:] = []
+	objs[o].listOP_BaseLeaEDX_Module [:] = []
+	objs[o].listOP_BaseLeaESI_Module [:] = []
+	objs[o].listOP_BaseLeaEDI_Module [:] = []
+	objs[o].listOP_BaseLeaEBP_Module [:] = []
 def clearListBaseLea():
 	objs[o].listOP_BaseLea[:] = []
 	objs[o].listOP_BaseLea_CNT[:] = []
 	objs[o].listOP_BaseLea_NumOps[:] = []
-	objs[o].listOP_BaseLea_Module = []
+	objs[o].listOP_BaseLea_Module [:] = []
 def clearListBaseLeaEAX():
 	objs[o].listOP_BaseLeaEAX[:] = []
 	objs[o].listOP_BaseLeaEAX_CNT[:] = []
 	objs[o].listOP_BaseLeaEAX_NumOps[:] = []
-	objs[o].listOP_BaseLeaEAX_Module = []
+	objs[o].listOP_BaseLeaEAX_Module [:] = []
 def clearListBaseLeaEBX():
 	objs[o].listOP_BaseLeaEBX[:] = []
 	objs[o].listOP_BaseLeaEBX_CNT[:] = []
 	objs[o].listOP_BaseLeaEBX_NumOps[:] = []
-	objs[o].listOP_BaseLeaEBX_Module = []
+	objs[o].listOP_BaseLeaEBX_Module [:] = []
 def clearListBaseLeaECX():
 	objs[o].listOP_BaseLeaECX[:] = []
 	objs[o].listOP_BaseLeaECX_CNT[:] = []
 	objs[o].listOP_BaseLeaECX_NumOps[:] = []
-	objs[o].listOP_BaseLeaECX_Module = []
+	objs[o].listOP_BaseLeaECX_Module [:] = []
 def clearListBaseLeaEDX():
 	objs[o].listOP_BaseLeaEDX[:] = []
 	objs[o].listOP_BaseLeaEDX_CNT[:] = []
 	objs[o].listOP_BaseLeaEDX_NumOps[:] = []
-	objs[o].listOP_BaseLeaEDX_Module = []
+	objs[o].listOP_BaseLeaEDX_Module [:] = []
 def clearListBaseLeaESI():
 	objs[o].listOP_BaseLeaESI[:] = []
 	objs[o].listOP_BaseLeaESI_CNT[:] = []
 	objs[o].listOP_BaseLeaESI_NumOps[:] = []
-	objs[o].listOP_BaseLeaESI_Module = []
+	objs[o].listOP_BaseLeaESI_Module [:] = []
 def clearListBaseLeaEDI():
 	objs[o].listOP_BaseLeaEDI[:] = []
 	objs[o].listOP_BaseLeaEDI_CNT[:] = []
 	objs[o].listOP_BaseLeaEDI_NumOps[:] = []
-	objs[o].listOP_BaseLeaEDI_Module = []
+	objs[o].listOP_BaseLeaEDI_Module [:] = []
 def clearListBaseLeaESP():
 	objs[o].listOP_BaseLeaESP[:] = []
 	objs[o].listOP_BaseLeaESP_CNT[:] = []
 	objs[o].listOP_BaseLeaESP_NumOps[:] = []
-	objs[o].listOP_BaseLeaESP_Module = []
+	objs[o].listOP_BaseLeaESP_Module [:] = []
 def clearListBaseLeaEBP():
 	objs[o].listOP_BaseLeaEBP[:] = []
 	objs[o].listOP_BaseLeaEBP_CNT[:] = []
 	objs[o].listOP_BaseLeaEBP_NumOps[:] = []
-	objs[o].listOP_BaseLeaEBP_Module = []
+	objs[o].listOP_BaseLeaEBP_Module [:] = []
 
 #Push reg
 def clearListPushAll():
@@ -3398,60 +3870,60 @@ def clearListPushAll():
 	objs[o].listOP_BasePushEBP[:] = []
 	objs[o].listOP_BasePushEBP_CNT[:] = []
 	objs[o].listOP_BasePushEBP_NumOps[:] = []
-	objs[o].listOP_BasePush_Module = []
-	objs[o].listOP_BasePushEAX_Module = []
-	objs[o].listOP_BasePushEBX_Module = []
-	objs[o].listOP_BasePushECX_Module = []
-	objs[o].listOP_BasePushEDX_Module = []
-	objs[o].listOP_BasePushESI_Module = []
-	objs[o].listOP_BasePushEDI_Module = []
-	objs[o].listOP_BasePushEBP_Module = []
+	objs[o].listOP_BasePush_Module [:] = []
+	objs[o].listOP_BasePushEAX_Module [:] = []
+	objs[o].listOP_BasePushEBX_Module [:] = []
+	objs[o].listOP_BasePushECX_Module [:] = []
+	objs[o].listOP_BasePushEDX_Module [:] = []
+	objs[o].listOP_BasePushESI_Module [:] = []
+	objs[o].listOP_BasePushEDI_Module [:] = []
+	objs[o].listOP_BasePushEBP_Module [:] = []
 
 def clearListBasePush():
 	objs[o].listOP_BasePush[:] = []
 	objs[o].listOP_BasePush_CNT[:] = []
 	objs[o].listOP_BasePush_NumOps[:] = []
-	objs[o].listOP_BasePush_Module = []
+	objs[o].listOP_BasePush_Module [:] = []
 def clearListBasePushEAX():
 	objs[o].listOP_BasePushEAX[:] = []
 	objs[o].listOP_BasePushEAX_CNT[:] = []
 	objs[o].listOP_BasePushEAX_NumOps[:] = []
-	objs[o].listOP_BasePushEAX_Module = []
+	objs[o].listOP_BasePushEAX_Module [:] = []
 def clearListBasePushEBX():
 	objs[o].listOP_BasePushEBX[:] = []
 	objs[o].listOP_BasePushEBX_CNT[:] = []
 	objs[o].listOP_BasePushEBX_NumOps[:] = []
-	objs[o].listOP_BasePushEBX_Module = []
+	objs[o].listOP_BasePushEBX_Module [:] = []
 def clearListBasePushECX():
 	objs[o].listOP_BasePushECX[:] = []
 	objs[o].listOP_BasePushECX_CNT[:] = []
 	objs[o].listOP_BasePushECX_NumOps[:] = []
-	objs[o].listOP_BasePushECX_Module = []
+	objs[o].listOP_BasePushECX_Module [:] = []
 def clearListBasePushEDX():
 	objs[o].listOP_BasePushEDX[:] = []
 	objs[o].listOP_BasePushEDX_CNT[:] = []
 	objs[o].listOP_BasePushEDX_NumOps[:] = []
-	objs[o].listOP_BasePushEDX_Module = []
+	objs[o].listOP_BasePushEDX_Module [:] = []
 def clearListBasePushESI():
 	objs[o].listOP_BasePushESI[:] = []
 	objs[o].listOP_BasePushESI_CNT[:] = []
 	objs[o].listOP_BasePushESI_NumOps[:] = []
-	objs[o].listOP_BasePushESI_Module = []
+	objs[o].listOP_BasePushESI_Module [:] = []
 def clearListBasePushEDI():
 	objs[o].listOP_BasePushEDI[:] = []
 	objs[o].listOP_BasePushEDI_CNT[:] = []
 	objs[o].listOP_BasePushEDI_NumOps[:] = []
-	objs[o].listOP_BasePushEDI_Module = []
+	objs[o].listOP_BasePushEDI_Module [:] = []
 def clearListBasePushESP():
 	objs[o].listOP_BasePushESP[:] = []
 	objs[o].listOP_BasePushESP_CNT[:] = []
 	objs[o].listOP_BasePushESP_NumOps[:] = []
-	objs[o].listOP_BasePushESP_Module = []
+	objs[o].listOP_BasePushESP_Module [:] = []
 def clearListBasePushEBP():
 	objs[o].listOP_BasePushEBP[:] = []
 	objs[o].listOP_BasePushEBP_CNT[:] = []
 	objs[o].listOP_BasePushEBP_NumOps[:] = []
-	objs[o].listOP_BasePushEBP_Module = []
+	objs[o].listOP_BasePushEBP_Module [:] = []
 #POP
 def clearListPopAll():
 	objs[o].listOP_BasePop[:] = []
@@ -3527,104 +3999,104 @@ def clearListPopAll():
 	objs[o].listOP_RET_Pop_EBP_Module [:] = []
 
 def clearListStackPivot():
-	objs[o].listOP_BaseStackPivot = []
-	objs[o].listOP_BaseStackPivot_CNT = []
-	objs[o].listOP_BaseStackPivot_NumOps = []
-	objs[o].listOP_BaseStackPivot_Module = []
-	objs[o].listOP_BaseStackPivot_Special = []
-	objs[o].listOP_BaseStackPivotEAX = []
-	objs[o].listOP_BaseStackPivotEAX_CNT = []
-	objs[o].listOP_BaseStackPivotEAX_NumOps = []
-	objs[o].listOP_BaseStackPivotEAX_Module = []
-	objs[o].listOP_BaseStackPivotEAX_Special = []
-	objs[o].listOP_BaseStackPivotEBX = []
-	objs[o].listOP_BaseStackPivotEBX_CNT = []
-	objs[o].listOP_BaseStackPivotEBX_NumOps = []
-	objs[o].listOP_BaseStackPivotEBX_Module = []
-	objs[o].listOP_BaseStackPivotEBX_Special = []
-	objs[o].listOP_BaseStackPivotECX = []
-	objs[o].listOP_BaseStackPivotECX_CNT = []
-	objs[o].listOP_BaseStackPivotECX_NumOps = []
-	objs[o].listOP_BaseStackPivotECX_Module = []
-	objs[o].listOP_BaseStackPivotECX_Special = []
-	objs[o].listOP_BaseStackPivotEDX = []
-	objs[o].listOP_BaseStackPivotEDX_CNT = []
-	objs[o].listOP_BaseStackPivotEDX_NumOps = []
-	objs[o].listOP_BaseStackPivotEDX_Module = []
-	objs[o].listOP_BaseStackPivotEDX_Special = []
-	objs[o].listOP_BaseStackPivotEDI = []
-	objs[o].listOP_BaseStackPivotEDI_CNT = []
-	objs[o].listOP_BaseStackPivotEDI_NumOps = []
-	objs[o].listOP_BaseStackPivotEDI_Module = []
-	objs[o].listOP_BaseStackPivotEDI_Special = []
-	objs[o].listOP_BaseStackPivotESI = []
-	objs[o].listOP_BaseStackPivotESI_CNT = []
-	objs[o].listOP_BaseStackPivotESI_NumOps = []
-	objs[o].listOP_BaseStackPivotESI_Module = []
-	objs[o].listOP_BaseStackPivotESI_Special = []
-	objs[o].listOP_BaseStackPivotEBP = []
-	objs[o].listOP_BaseStackPivotEBP_CNT = []
-	objs[o].listOP_BaseStackPivotEBP_NumOps = []
-	objs[o].listOP_BaseStackPivotEBP_Module = []
-	objs[o].listOP_BaseStackPivotEBP_Special = []
-	objs[o].listOP_BaseStackPivotESP = []
-	objs[o].listOP_BaseStackPivotESP_CNT = []
-	objs[o].listOP_BaseStackPivotESP_NumOps = []
-	objs[o].listOP_BaseStackPivotESP_Module = []
-	objs[o].listOP_BaseStackPivotESP_Special = []
+	objs[o].listOP_BaseStackPivot [:] = []
+	objs[o].listOP_BaseStackPivot_CNT [:] = []
+	objs[o].listOP_BaseStackPivot_NumOps [:] = []
+	objs[o].listOP_BaseStackPivot_Module [:] = []
+	objs[o].listOP_BaseStackPivot_Special [:] = []
+	objs[o].listOP_BaseStackPivotEAX [:] = []
+	objs[o].listOP_BaseStackPivotEAX_CNT [:] = []
+	objs[o].listOP_BaseStackPivotEAX_NumOps [:] = []
+	objs[o].listOP_BaseStackPivotEAX_Module [:] = []
+	objs[o].listOP_BaseStackPivotEAX_Special [:] = []
+	objs[o].listOP_BaseStackPivotEBX [:] = []
+	objs[o].listOP_BaseStackPivotEBX_CNT [:] = []
+	objs[o].listOP_BaseStackPivotEBX_NumOps [:] = []
+	objs[o].listOP_BaseStackPivotEBX_Module [:] = []
+	objs[o].listOP_BaseStackPivotEBX_Special [:] = []
+	objs[o].listOP_BaseStackPivotECX [:] = []
+	objs[o].listOP_BaseStackPivotECX_CNT [:] = []
+	objs[o].listOP_BaseStackPivotECX_NumOps [:] = []
+	objs[o].listOP_BaseStackPivotECX_Module [:] = []
+	objs[o].listOP_BaseStackPivotECX_Special [:] = []
+	objs[o].listOP_BaseStackPivotEDX [:] = []
+	objs[o].listOP_BaseStackPivotEDX_CNT [:] = []
+	objs[o].listOP_BaseStackPivotEDX_NumOps [:] = []
+	objs[o].listOP_BaseStackPivotEDX_Module [:] = []
+	objs[o].listOP_BaseStackPivotEDX_Special [:] = []
+	objs[o].listOP_BaseStackPivotEDI [:] = []
+	objs[o].listOP_BaseStackPivotEDI_CNT [:] = []
+	objs[o].listOP_BaseStackPivotEDI_NumOps [:] = []
+	objs[o].listOP_BaseStackPivotEDI_Module [:] = []
+	objs[o].listOP_BaseStackPivotEDI_Special [:] = []
+	objs[o].listOP_BaseStackPivotESI [:] = []
+	objs[o].listOP_BaseStackPivotESI_CNT [:] = []
+	objs[o].listOP_BaseStackPivotESI_NumOps [:] = []
+	objs[o].listOP_BaseStackPivotESI_Module [:] = []
+	objs[o].listOP_BaseStackPivotESI_Special [:] = []
+	objs[o].listOP_BaseStackPivotEBP [:] = []
+	objs[o].listOP_BaseStackPivotEBP_CNT [:] = []
+	objs[o].listOP_BaseStackPivotEBP_NumOps [:] = []
+	objs[o].listOP_BaseStackPivotEBP_Module [:] = []
+	objs[o].listOP_BaseStackPivotEBP_Special [:] = []
+	objs[o].listOP_BaseStackPivotESP [:] = []
+	objs[o].listOP_BaseStackPivotESP_CNT [:] = []
+	objs[o].listOP_BaseStackPivotESP_NumOps [:] = []
+	objs[o].listOP_BaseStackPivotESP_Module [:] = []
+	objs[o].listOP_BaseStackPivotESP_Special [:] = []
 def clearListStackPivotEAX(address, valCount, numOps, modName, special):
-	objs[o].listOP_BaseStackPivotEAX = []
-	objs[o].listOP_BaseStackPivotEAX_CNT = []
-	objs[o].listOP_BaseStackPivotEAX_NumOps = []
-	objs[o].listOP_BaseStackPivotEAX_Module = []
-	objs[o].listOP_BaseStackPivotEAX_Special = []
+	objs[o].listOP_BaseStackPivotEAX [:] = []
+	objs[o].listOP_BaseStackPivotEAX_CNT [:] = []
+	objs[o].listOP_BaseStackPivotEAX_NumOps [:] = []
+	objs[o].listOP_BaseStackPivotEAX_Module [:] = []
+	objs[o].listOP_BaseStackPivotEAX_Special [:] = []
 def clearListStackPivotEBX(address, valCount, numOps, modName, special):
-	objs[o].listOP_BaseStackPivotEBX = []
-	objs[o].listOP_BaseStackPivotEBX_CNT = []
-	objs[o].listOP_BaseStackPivotEBX_NumOps = []
-	objs[o].listOP_BaseStackPivotEBX_Module = []
-	objs[o].listOP_BaseStackPivotEBX_Special = []
+	objs[o].listOP_BaseStackPivotEBX [:] = []
+	objs[o].listOP_BaseStackPivotEBX_CNT [:] = []
+	objs[o].listOP_BaseStackPivotEBX_NumOps [:] = []
+	objs[o].listOP_BaseStackPivotEBX_Module [:] = []
+	objs[o].listOP_BaseStackPivotEBX_Special [:] = []
 def clearListStackPivotECX(address, valCount, numOps, modName, special):
-	objs[o].listOP_BaseStackPivotECX = []
-	objs[o].listOP_BaseStackPivotECX_CNT = []
-	objs[o].listOP_BaseStackPivotECX_NumOps = []
-	objs[o].listOP_BaseStackPivotECX_Module = []
-	objs[o].listOP_BaseStackPivotECX_Special = []
+	objs[o].listOP_BaseStackPivotECX [:] = []
+	objs[o].listOP_BaseStackPivotECX_CNT [:] = []
+	objs[o].listOP_BaseStackPivotECX_NumOps [:] = []
+	objs[o].listOP_BaseStackPivotECX_Module [:] = []
+	objs[o].listOP_BaseStackPivotECX_Special [:] = []
 def clearListStackPivotEDX(address, valCount, numOps, modName, special):
-	objs[o].listOP_BaseStackPivotEDX = []
-	objs[o].listOP_BaseStackPivotEDX_CNT = []
-	objs[o].listOP_BaseStackPivotEDX_NumOps = []
-	objs[o].listOP_BaseStackPivotEDX_Module = []
-	objs[o].listOP_BaseStackPivotEDX_Special = []
+	objs[o].listOP_BaseStackPivotEDX [:] = []
+	objs[o].listOP_BaseStackPivotEDX_CNT [:] = []
+	objs[o].listOP_BaseStackPivotEDX_NumOps [:] = []
+	objs[o].listOP_BaseStackPivotEDX_Module [:] = []
+	objs[o].listOP_BaseStackPivotEDX_Special [:] = []
 def clearListStackPivotEDI(address, valCount, numOps, modName, special):
-	objs[o].listOP_BaseStackPivotEDI = []
-	objs[o].listOP_BaseStackPivotEDI_CNT = []
-	objs[o].listOP_BaseStackPivotEDI_NumOps = []
-	objs[o].listOP_BaseStackPivotEDI_Module = []
-	objs[o].listOP_BaseStackPivotEDI_Special = []
+	objs[o].listOP_BaseStackPivotEDI [:] = []
+	objs[o].listOP_BaseStackPivotEDI_CNT [:] = []
+	objs[o].listOP_BaseStackPivotEDI_NumOps [:] = []
+	objs[o].listOP_BaseStackPivotEDI_Module [:] = []
+	objs[o].listOP_BaseStackPivotEDI_Special [:] = []
 def clearListStackPivotESI(address, valCount, numOps, modName, special):
-	objs[o].listOP_BaseStackPivotESI = []
-	objs[o].listOP_BaseStackPivotESI_CNT = []
-	objs[o].listOP_BaseStackPivotESI_NumOps = []
-	objs[o].listOP_BaseStackPivotESI_Module = []
-	objs[o].listOP_BaseStackPivotESI_Special = []
+	objs[o].listOP_BaseStackPivotESI [:] = []
+	objs[o].listOP_BaseStackPivotESI_CNT [:] = []
+	objs[o].listOP_BaseStackPivotESI_NumOps [:] = []
+	objs[o].listOP_BaseStackPivotESI_Module [:] = []
+	objs[o].listOP_BaseStackPivotESI_Special [:] = []
 def clearListStackPivotEBP(address, valCount, numOps, modName, special):
-	objs[o].listOP_BaseStackPivotEBP = []
-	objs[o].listOP_BaseStackPivotEBP_CNT = []
-	objs[o].listOP_BaseStackPivotEBP_NumOps = []
-	objs[o].listOP_BaseStackPivotEBP_Module = []
-	objs[o].listOP_BaseStackPivotEBP_Special = []
+	objs[o].listOP_BaseStackPivotEBP [:] = []
+	objs[o].listOP_BaseStackPivotEBP_CNT [:] = []
+	objs[o].listOP_BaseStackPivotEBP_NumOps [:] = []
+	objs[o].listOP_BaseStackPivotEBP_Module [:] = []
+	objs[o].listOP_BaseStackPivotEBP_Special [:] = []
 def clearListStackPivotESP(address, valCount, numOps, modName, special):
-	objs[o].listOP_BaseStackPivotESP = []
-	objs[o].listOP_BaseStackPivotESP_CNT = []
-	objs[o].listOP_BaseStackPivotESP_NumOps = []
-	objs[o].listOP_BaseStackPivotESP_Module = []
-	objs[o].listOP_BaseStackPivotESP_Special = []
+	objs[o].listOP_BaseStackPivotESP [:] = []
+	objs[o].listOP_BaseStackPivotESP_CNT [:] = []
+	objs[o].listOP_BaseStackPivotESP_NumOps [:] = []
+	objs[o].listOP_BaseStackPivotESP_Module [:] = []
+	objs[o].listOP_BaseStackPivotESP_Special [:] = []
 def clearListBasePop():
 	objs[o].listOP_BasePop[:] = []
 	objs[o].listOP_BasePop_CNT[:] = []
 	objs[o].listOP_BasePop_NumOps[:] = []
-	objs[o].listOP_BasePop_Module = []
+	objs[o].listOP_BasePop_Module[:] = []
 def clearListRETPop():
 	objs[o].listOP_RET_Pop [:] = []
 	objs[o].listOP_RET_Pop_CNT [:] = []
@@ -3634,42 +4106,42 @@ def clearListBasePopEAX():
 	objs[o].listOP_BasePopEAX[:] = []
 	objs[o].listOP_BasePopEAX_CNT[:] = []
 	objs[o].listOP_BasePopEAX_NumOps[:] = []
-	objs[o].listOP_BasePopEAX_Module = []
+	objs[o].listOP_BasePopEAX_Module [:] = []
 def clearListBasePopEBX():
 	objs[o].listOP_BasePopEBX[:] = []
 	objs[o].listOP_BasePopEBX_CNT[:] = []
 	objs[o].listOP_BasePopEBX_NumOps[:] = []
-	objs[o].listOP_BasePopEBX_Module = []
+	objs[o].listOP_BasePopEBX_Module [:] = []
 def clearListBasePopECX():
 	objs[o].listOP_BasePopECX[:] = []
 	objs[o].listOP_BasePopECX_CNT[:] = []
 	objs[o].listOP_BasePopECX_NumOps[:] = []
-	objs[o].listOP_BasePopECX_Module = []
+	objs[o].listOP_BasePopECX_Module [:] = []
 def clearListBasePopEDX():
 	objs[o].listOP_BasePopEDX[:] = []
 	objs[o].listOP_BasePopEDX_CNT[:] = []
 	objs[o].listOP_BasePopEDX_NumOps[:] = []
-	objs[o].listOP_BasePopEDX_Module = []
+	objs[o].listOP_BasePopEDX_Module [:] = []
 def clearListBasePopESI():
 	objs[o].listOP_BasePopESI[:] = []
 	objs[o].listOP_BasePopESI_CNT[:] = []
 	objs[o].listOP_BasePopESI_NumOps[:] = []
-	objs[o].listOP_BasePopESI_Module = []
+	objs[o].listOP_BasePopESI_Module [:] = []
 def clearListBasePopEDI():
 	objs[o].listOP_BasePopEDI[:] = []
 	objs[o].listOP_BasePopEDI_CNT[:] = []
 	objs[o].listOP_BasePopEDI_NumOps[:] = []
-	objs[o].listOP_BasePopEDI_Module = []
+	objs[o].listOP_BasePopEDI_Module [:] = []
 def clearListBasePopESP():
 	objs[o].listOP_BasePopESP[:] = []
 	objs[o].listOP_BasePopESP_CNT[:] = []
 	objs[o].listOP_BasePopESP_NumOps[:] = []
-	objs[o].listOP_BasePopESP_Module = []
+	objs[o].listOP_BasePopESP_Module [:] = []
 def clearListBasePopEBP():
 	objs[o].listOP_BasePopEBP[:] = []
 	objs[o].listOP_BasePopEBP_CNT[:] = []
 	objs[o].listOP_BasePopEBP_NumOps[:] = []
-	objs[o].listOP_BasePopEBP_Module = []
+	objs[o].listOP_BasePopEBP_Module [:] = []
 #Inc
 def clearListIncAll():
 	objs[o].listOP_BaseInc[:] = []
@@ -3699,60 +4171,60 @@ def clearListIncAll():
 	objs[o].listOP_BaseIncEBP[:] = []
 	objs[o].listOP_BaseIncEBP_CNT[:] = []
 	objs[o].listOP_BaseIncEBP_NumOps[:] = []	
-	objs[o].listOP_BaseInc_Module = []
-	objs[o].listOP_BaseIncEAX_Module = []
-	objs[o].listOP_BaseIncEBX_Module = []
-	objs[o].listOP_BaseIncECX_Module = []
-	objs[o].listOP_BaseIncEDX_Module = []
-	objs[o].listOP_BaseIncEDI_Module = []
-	objs[o].listOP_BaseIncESI_Module = []
-	objs[o].listOP_BaseIncEBP_Module = []
+	objs[o].listOP_BaseInc_Module [:] = []
+	objs[o].listOP_BaseIncEAX_Module [:] = []
+	objs[o].listOP_BaseIncEBX_Module [:] = []
+	objs[o].listOP_BaseIncECX_Module [:] = []
+	objs[o].listOP_BaseIncEDX_Module [:] = []
+	objs[o].listOP_BaseIncEDI_Module [:] = []
+	objs[o].listOP_BaseIncESI_Module [:] = []
+	objs[o].listOP_BaseIncEBP_Module [:] = []
 
 def clearListBaseInc():
 	objs[o].listOP_BaseInc[:] = []
 	objs[o].listOP_BaseInc_CNT[:] = []
 	objs[o].listOP_BaseInc_NumOps[:] = []
-	objs[o].listOP_BaseInc_Module = []
+	objs[o].listOP_BaseInc_Module [:] = []
 def clearListBaseIncEAX():
 	objs[o].listOP_BaseIncEAX[:] = []
 	objs[o].listOP_BaseIncEAX_CNT[:] = []
 	objs[o].listOP_BaseIncEAX_NumOps[:] = []
-	objs[o].listOP_BaseIncEAX_Module = []
+	objs[o].listOP_BaseIncEAX_Module [:] = []
 def clearListBaseIncEBX():
 	objs[o].listOP_BaseIncEBX[:] = []
 	objs[o].listOP_BaseIncEBX_CNT[:] = []
 	objs[o].listOP_BaseIncEBX_NumOps[:] = []
-	objs[o].listOP_BaseIncEBX_Module = []
+	objs[o].listOP_BaseIncEBX_Module [:] = []
 def clearListBaseIncECX():
 	objs[o].listOP_BaseIncECX[:] = []
 	objs[o].listOP_BaseIncECX_CNT[:] = []
 	objs[o].listOP_BaseIncECX_NumOps[:] = []
-	objs[o].listOP_BaseIncECX_Module = []
+	objs[o].listOP_BaseIncECX_Module [:] = []
 def clearListBaseIncEDX():
 	objs[o].listOP_BaseIncEDX[:] = []
 	objs[o].listOP_BaseIncEDX_CNT[:] = []
 	objs[o].listOP_BaseIncEDX_NumOps[:] = []
-	objs[o].listOP_BaseIncEDX_Module = []
+	objs[o].listOP_BaseIncEDX_Module [:] = []
 def clearListBaseIncESI():
 	objs[o].listOP_BaseIncESI[:] = []
 	objs[o].listOP_BaseIncESI_CNT[:] = []
 	objs[o].listOP_BaseIncESI_NumOps[:] = []
-	objs[o].listOP_BaseIncESI_Module = []
+	objs[o].listOP_BaseIncESI_Module [:] = []
 def clearListBaseIncEDI():
 	objs[o].listOP_BaseIncEDI[:] = []
 	objs[o].listOP_BaseIncEDI_CNT[:] = []
 	objs[o].listOP_BaseIncEDI_NumOps[:] = []
-	objs[o].listOP_BaseIncEDI_Module = []
+	objs[o].listOP_BaseIncEDI_Module [:] = []
 def clearListBaseIncESP():
 	objs[o].listOP_BaseIncESP[:] = []
 	objs[o].listOP_BaseIncESP_CNT[:] = []
 	objs[o].listOP_BaseIncESP_NumOps[:] = []
-	objs[o].listOP_BaseIncESP_Module = []
+	objs[o].listOP_BaseIncESP_Module [:] = []
 def clearListBaseIncEBP():
 	objs[o].listOP_BaseIncEBP[:] = []
 	objs[o].listOP_BaseIncEBP_CNT[:] = []
 	objs[o].listOP_BaseIncEBP_NumOps[:] = []
-	objs[o].listOP_BaseIncEBP_Module = []
+	objs[o].listOP_BaseIncEBP_Module [:] = []
 #Dec
 def clearListDecAll():
 	objs[o].listOP_BaseDec[:] = []
@@ -3782,59 +4254,59 @@ def clearListDecAll():
 	objs[o].listOP_BaseDecEBP[:] = []
 	objs[o].listOP_BaseDecEBP_CNT[:] = []
 	objs[o].listOP_BaseDecEBP_NumOps[:] = []
-	objs[o].listOP_BaseDec_Module = []
-	objs[o].listOP_BaseDecEAX_Module = []
-	objs[o].listOP_BaseDecEBX_Module = []
-	objs[o].listOP_BaseDecECX_Module = []
-	objs[o].listOP_BaseDecEDX_Module = []
-	objs[o].listOP_BaseDecESI_Module = []
-	objs[o].listOP_BaseDecEDI_Module = []
-	objs[o].listOP_BaseDecEBP_Module = []
+	objs[o].listOP_BaseDec_Module [:] = []
+	objs[o].listOP_BaseDecEAX_Module [:] = []
+	objs[o].listOP_BaseDecEBX_Module [:] = []
+	objs[o].listOP_BaseDecECX_Module [:] = []
+	objs[o].listOP_BaseDecEDX_Module [:] = []
+	objs[o].listOP_BaseDecESI_Module [:] = []
+	objs[o].listOP_BaseDecEDI_Module [:] = []
+	objs[o].listOP_BaseDecEBP_Module [:] = []
 def clearListBaseDec():
 	objs[o].listOP_BaseDec[:] = []
 	objs[o].listOP_BaseDec_CNT[:] = []
 	objs[o].listOP_BaseDec_NumOps[:] = []
-	objs[o].listOP_BaseDec_Module = []
+	objs[o].listOP_BaseDec_Module [:] = []
 def clearListBaseDecEAX():
 	objs[o].listOP_BaseDecEAX[:] = []
 	objs[o].listOP_BaseDecEAX_CNT[:] = []
 	objs[o].listOP_BaseDecEAX_NumOps[:] = []
-	objs[o].listOP_BaseDecEAX_Module = []
+	objs[o].listOP_BaseDecEAX_Module [:] = []
 def clearListBaseDecEBX():
 	objs[o].listOP_BaseDecEBX[:] = []
 	objs[o].listOP_BaseDecEBX_CNT[:] = []
 	objs[o].listOP_BaseDecEBX_NumOps[:] = []
-	objs[o].listOP_BaseDecEBX_Module = []
+	objs[o].listOP_BaseDecEBX_Module [:] = []
 def clearListBaseDecECX():
 	objs[o].listOP_BaseDecECX[:] = []
 	objs[o].listOP_BaseDecECX_CNT[:] = []
 	objs[o].listOP_BaseDecECX_NumOps[:] = []
-	objs[o].listOP_BaseDecECX_Module = []
+	objs[o].listOP_BaseDecECX_Module [:] = []
 def clearListBaseDecEDX():
 	objs[o].listOP_BaseDecEDX[:] = []
 	objs[o].listOP_BaseDecEDX_CNT[:] = []
 	objs[o].listOP_BaseDecEDX_NumOps[:] = []
-	objs[o].listOP_BaseDecEDX_Module = []
+	objs[o].listOP_BaseDecEDX_Module [:] = []
 def clearListBaseDecESI():
 	objs[o].listOP_BaseDecESI[:] = []
 	objs[o].listOP_BaseDecESI_CNT[:] = []
 	objs[o].listOP_BaseDecESI_NumOps[:] = []
-	objs[o].listOP_BaseDecESI_Module = []
+	objs[o].listOP_BaseDecESI_Module [:] = []
 def clearListBaseDecEDI():
 	objs[o].listOP_BaseDecEDI[:] = []
 	objs[o].listOP_BaseDecEDI_CNT[:] = []
 	objs[o].listOP_BaseDecEDI_NumOps[:] = []
-	objs[o].listOP_BaseDecEDI_Module = []
+	objs[o].listOP_BaseDecEDI_Module [:] = []
 def clearListBaseDecESP():
 	objs[o].listOP_BaseDecESP[:] = []
 	objs[o].listOP_BaseDecESP_CNT[:] = []
 	objs[o].listOP_BaseDecESP_NumOps[:] = []
-	objs[o].listOP_BaseDecESP_Module = []
+	objs[o].listOP_BaseDecESP_Module [:] = []
 def clearListBaseDecEBP():
 	objs[o].listOP_BaseDecEBP[:] = []
 	objs[o].listOP_BaseDecEBP_CNT[:] = []
 	objs[o].listOP_BaseDecEBP_NumOps[:] = []
-	objs[o].listOP_BaseDecEBP_Module = []
+	objs[o].listOP_BaseDecEBP_Module [:] = []
 #Xchg
 def clearListXchgAll():
 	objs[o].listOP_BaseXchg[:] = []
@@ -3864,59 +4336,59 @@ def clearListXchgAll():
 	objs[o].listOP_BaseXchgEBP[:] = []
 	objs[o].listOP_BaseXchgEBP_CNT[:] = []
 	objs[o].listOP_BaseXchgEBP_NumOps[:] = []
-	objs[o].listOP_BaseXchg_Module = []
-	objs[o].listOP_BaseXchgEAX_Module = []
-	objs[o].listOP_BaseXchgEBX_Module = []
-	objs[o].listOP_BaseXchgECX_Module = []
-	objs[o].listOP_BaseXchgEDX_Module = []
-	objs[o].listOP_BaseXchgEDI_Module = []
-	objs[o].listOP_BaseXchgESI_Module = []
-	objs[o].listOP_BaseXchgEBP_Module = []
+	objs[o].listOP_BaseXchg_Module [:] = []
+	objs[o].listOP_BaseXchgEAX_Module [:] = []
+	objs[o].listOP_BaseXchgEBX_Module [:] = []
+	objs[o].listOP_BaseXchgECX_Module [:] = []
+	objs[o].listOP_BaseXchgEDX_Module [:] = []
+	objs[o].listOP_BaseXchgEDI_Module [:] = []
+	objs[o].listOP_BaseXchgESI_Module [:] = []
+	objs[o].listOP_BaseXchgEBP_Module [:] = []
 def clearListBaseXchg():
 	objs[o].listOP_BaseXchg[:] = []
 	objs[o].listOP_BaseXchg_CNT[:] = []
 	objs[o].listOP_BaseXchg_NumOps[:] = []
-	objs[o].listOP_BaseXchg_Module = []
+	objs[o].listOP_BaseXchg_Module [:] = []
 def clearListBaseXchgEAX():
 	objs[o].listOP_BaseXchgEAX[:] = []
 	objs[o].listOP_BaseXchgEAX_CNT[:] = []
 	objs[o].listOP_BaseXchgEAX_NumOps[:] = []
-	objs[o].listOP_BaseXchgEAX_Module = []
+	objs[o].listOP_BaseXchgEAX_Module [:] = []
 def clearListBaseXchgEBX():
 	objs[o].listOP_BaseXchgEBX[:] = []
 	objs[o].listOP_BaseXchgEBX_CNT[:] = []
 	objs[o].listOP_BaseXchgEBX_NumOps[:] = []
-	objs[o].listOP_BaseXchgEBX_Module = []
+	objs[o].listOP_BaseXchgEBX_Module [:] = []
 def clearListBaseXchgECX():
 	objs[o].listOP_BaseXchgECX[:] = []
 	objs[o].listOP_BaseXchgECX_CNT[:] = []
 	objs[o].listOP_BaseXchgECX_NumOps[:] = []
-	objs[o].listOP_BaseXchgECX_Module = []
+	objs[o].listOP_BaseXchgECX_Module [:] = []
 def clearListBaseXchgEDX():
 	objs[o].listOP_BaseXchgEDX[:] = []
 	objs[o].listOP_BaseXchgEDX_CNT[:] = []
 	objs[o].listOP_BaseXchgEDX_NumOps[:] = []
-	objs[o].listOP_BaseXchgEDX_Module = []
+	objs[o].listOP_BaseXchgEDX_Module [:] = []
 def clearListBaseXchgESI():
 	objs[o].listOP_BaseXchgESI[:] = []
 	objs[o].listOP_BaseXchgESI_CNT[:] = []
 	objs[o].listOP_BaseXchgESI_NumOps[:] = []
-	objs[o].listOP_BaseXchgESI_Module = []
+	objs[o].listOP_BaseXchgESI_Module [:] = []
 def clearListBaseXchgEDI():
 	objs[o].listOP_BaseXchgEDI[:] = []
 	objs[o].listOP_BaseXchgEDI_CNT[:] = []
 	objs[o].listOP_BaseXchgEDI_NumOps[:] = []
-	objs[o].listOP_BaseXchgEDI_Module = []
+	objs[o].listOP_BaseXchgEDI_Module [:] = []
 def clearListBaseXchgESP():
 	objs[o].listOP_BaseXchgESP[:] = []
 	objs[o].listOP_BaseXchgESP_CNT[:] = []
 	objs[o].listOP_BaseXchgESP_NumOps[:] = []
-	objs[o].listOP_BaseXchgESP_Module = []
+	objs[o].listOP_BaseXchgESP_Module [:] = []
 def clearListBaseXchgEBP():
 	objs[o].listOP_BaseXchgEBP[:] = []
 	objs[o].listOP_BaseXchgEBP_CNT[:] = []
 	objs[o].listOP_BaseXchgEBP_NumOps[:] = []
-	objs[o].listOP_BaseXchgEBP_Module = []
+	objs[o].listOP_BaseXchgEBP_Module [:] = []
 #LEFT SHIFT
 def clearListShiftLeft():
 	objs[o].listOP_BaseShiftLeft[:] = []
@@ -4429,6 +4901,7 @@ def Extraction():
 	global o
 	global modName
 	global peName
+	global pe
 
 #	obj = MyBytes()
 #	obj._init_()
@@ -4440,11 +4913,13 @@ def Extraction():
 	except:
 		pass
 	PEtemp = PE_path + "/"+ peName
+
+
 	if skipPath == False:
 		pe = pefile.PE(peName)
 	if skipPath == True:
 		pe = pefile.PE(PEtemp)
-	
+
 	#data = pe.get_memory_mapped_image()[entryPoint:entryPoint+vSize]
 	#objs[o].data2 = pe.sections[0].get_data()[VirtualAdd:VirtualAdd+vSize]
 	#initMods(modName)
@@ -4452,7 +4927,7 @@ def Extraction():
 
 	objs[o].entryPoint = pe.OPTIONAL_HEADER.AddressOfEntryPoint
 	objs[o].VirtualAdd = pe.sections[0].VirtualAddress
-	print pe.sections[0].VirtualAddress
+	# print pe.sections[0].VirtualAddress
 	objs[o].ImageBase = pe.OPTIONAL_HEADER.ImageBase
 	objs[o].vSize = pe.sections[0].Misc_VirtualSize
 	objs[o].startLoc = objs[o].VirtualAdd + objs[o].ImageBase
@@ -4462,15 +4937,202 @@ def Extraction():
 	#objs[o].data2  = pe.sections[0].get_data()[objs[o].VirtualAdd:objs[o].VirtualAdd+objs[o].vSize]   OLD 722
 	objs[o].data2  = pe.sections[0].get_data()[0:]
 	global DLL_Protect
+	objs[o].modName = peName
+	objs[o].protect = peName
+	objs[o].depStatus = dep()
+	objs[o].aslrStatus =  aslr()
+	objs[o].sehSTATUS = seh()
+	objs[o].CFGstatus = CFG()
+	objs[o].protect =str(peName) +"\t"+ str(objs[o].depStatus) +"\t"+ str(objs[o].aslrStatus) +"\t"+ str(objs[o].sehSTATUS) +"\t"+ str(objs[o].CFGstatus)
+	addMitigationsObj(peName, dep(), aslr(), seh(), CFG())
 
-	objs[o].protect = str(peName) + "\t"
-	objs[o].depStatus = "\tDEP: " + str(dep())
-	objs[o].aslrStatus = "\tASLR: " + str(aslr())
-	objs[o].sehSTATUS = "\tSAFESEH: " + str(seh())
-	objs[o].CFGstatus = "\tCFG: " + str(CFG())
-	objs[o].protect = objs[o].protect + objs[o].depStatus + objs[o].aslrStatus + objs[o].sehSTATUS + objs[o].CFGstatus
 	DLL_Protect.append(objs[o].protect)
 	print objs[o].protect
+	addMitigations((peName), dep(), aslr(), seh(), CFG())
+	# print ( objs[o].depStatus, objs[o].aslrStatus, objs[o].sehSTATUS,objs[o].CFGstatus)
+
+
+def checkMitigationSkip():
+	global o
+	global avoidDEP
+	global avoidASLR
+	global avoidSEH
+	global avoidCFG
+
+	if (objs[o].depStatus ==True) and (avoidDEP ==True):
+		return True
+	if (objs[o].aslrStatus ==True) and (avoidASLR ==True):
+		return True
+	if (objs[o].sehSTATUS ==True) and (avoidSEH ==True):
+		return True
+	if (objs[o].CFGstatus ==True) and (avoidCFG ==True):
+		return True
+
+	return False # skip
+
+
+def checkBadCharSkip(addy):
+	global o
+
+	return False
+	return True # skip
+
+def addMitigations(dllName,dep,aslr,seh,cfg):
+	global pe
+	# print ("Try saving myMit: " + dllName)
+	excludeMe=False
+	for dll in Mitigations:
+		mitPresent= re.match( dll[0].lower(), dllName.lower(), re.M|re.I)
+		if mitPresent:
+			excludeMe=True
+
+	if excludeMe==False:
+		# print ("saving Mit: " + dllName)
+		# Mitigations.append(tuple((dllName, dep, aslr, seh,CFG)))
+		# print ("CFG ", CFG)
+		notFound=True
+		for dll in Mitigations:
+			if dll[0].lower() == dllName.lower():
+				notFound=False
+		if notFound:
+			Mitigations.append(tuple((str(dllName), str(dep), str(aslr), str(seh),str(cfg))))
+
+		if len(Mitigations)==0:
+			Mitigations.append(tuple((str(dllName), str(dep), str(aslr), str(seh),str(cfg))))
+
+def setMitigationsAvoid(dep, aslr, seh, cfg):  # all values for parameters are boolean
+	global avoidDEP
+	global avoidASLR
+	global avoidSEH
+	global avoidCFG
+	avoidDEP = dep
+	avoidASLR = aslr
+	avoidSEH = seh
+	avoidCFG = cfg
+
+def setMitigationsAvoidUI():  # all values for parameters are boolean
+	print  ("setMitigationsAvoid")
+	global avoidDEP
+	global avoidASLR
+	global avoidSEH
+	global avoidCFG
+	
+	out="\nCurrent Mitigaiton settings:\n"
+	out+="Avoid DEP: " + str(avoidDEP) + "\tAvoid ASLR: " + str(avoidASLR) + "\tAvoid SafeSEH: " + str(avoidSEH) +"\tAvoid CFG: "+ str(avoidCFG) +":\n"
+	out+="\n\tNote: if Avoid == True, then we will exclude all those modules from results.\n"
+	out+="\t\tDefault setting is False (do not avoid) for all.\n"
+	out+="\nTo change values, enter T or F for each mitigation, delimited by a space.\n\tDEP ASLR SafeSEH CFG\n\tE.g. F T F F\n\n\tQ to exit\n"
+	print (out)
+	ans = raw_input()
+	ans = ans.upper()	
+	ans2 = ans.split(' ')
+	# print ans2
+	ans2[0]=ans2[0].replace(' ', '')
+	ans2[1]=ans2[1].replace(' ', '')
+	ans2[2]=ans2[2].replace(' ', '')
+	ans2[3]=ans2[3].replace(' ', '')
+	t=0
+
+	while ("" in ans2):
+		ans2.remove("")
+	skip = False
+	if ans2[0]=="Q":
+		skip = True
+	if not skip:
+		try:
+			print ans2[0]
+			if ans2[0]=="T":
+				avoidDEP=True
+			elif ans2[0]=="F":
+				avoidDEP=False
+		except:
+			pass
+		try:			
+			print ans2[1]
+			if ans2[1]=="T":
+				avoidASLR=True
+			elif ans2[1]=="F":
+				avoidASLR=False
+		except:
+			pass
+		try:
+			print ans2[2]
+			if ans2[2]=="T":
+				avoidSEH=True
+			elif ans2[2]=="F":
+				avoidSEH=False
+		except:
+			pass
+		try:			
+			print ans2[3]
+			if ans2[3]=="T":
+				avoidCFG=True
+			elif ans2[3]=="F":
+				avoidCFG=False
+		except:
+			pass
+		out="Avoid DEP: " + str(avoidDEP) + "  \tAvoid ASLR: " + str(avoidASLR) + "\tAvoid SafeSEH: " + str(avoidSEH) +"\tAvoid CFG: "+ str(avoidCFG) +":\n"
+		
+		print (out)
+def addMitigationsObj(dllName,dep,aslr,seh,cfg):
+	global o
+	global PE_Protect
+	# global pe
+	# print ("Try saving MitObj: " + dllName + " " + str(hex(objs[o].svSize)) + "\n") 
+	try:
+		objs[o].modName = str(dllName)
+	except:
+		objs[o].modName = dllName
+	objs[o].protect = objs[o].modName
+	objs[o].depStatus = dep
+	objs[o].aslrStatus =  aslr
+	objs[o].sehSTATUS = seh
+	objs[o].CFGstatus = cfg
+	objs[o].protect =str(dllName) +"\t"+ str(objs[o].depStatus) +"\t"+ str(objs[o].aslrStatus) +"\t"+ str(objs[o].sehSTATUS) +"\t"+ str(objs[o].CFGstatus)
+
+	DLL_Protect.append(objs[o].protect)
+
+	PE_Protect = PE_Protect + str(objs[o].protect)
+	# print objs[o].protect
+
+def outputMitigations():
+	output=""
+	global PE_DLLS
+	global Mitigations
+	# print ("mit size", len(Mitigations))
+	# print PE_DLLS
+	# print len(PE_DLLS)
+	
+
+	
+	for dll in Mitigations:
+		myDllName = dll[0]
+		myDep = "DEP: " + dll[1] 
+		myASLR = "ASLR: "+ dll[2]
+		mySEH = "SafeSEH: "+dll[3]
+		myCFG = "CFG: "+dll[4]
+		comment =('{:<25s} {:<14s} {:<14s}{:<20s}{:<14s}\n'.format(myDllName, myDep, myASLR, mySEH, myCFG))
+		output+=comment
+	# print (output)
+	return output
+
+def addPE_DLLS2(name):
+	global PE_DLLS2
+	global PE_DLLS
+	# print ("addPE_DLLS2 " + name)
+	alreadyPresent=False
+	for dll in PE_DLLS:
+		print dll
+		if dll.lower() == name.lower():
+			# print ("already there", dll)
+			alreadyPresent=True
+	for dll in PE_DLLS2:
+		print dll
+		if dll.lower() == name.lower():
+			# print ("already there2", dll)
+			alreadyPresent=True
+	if alreadyPresent == False:
+		PE_DLLS2.append(name)
 
 def Extractionold():
 
@@ -4504,7 +5166,7 @@ def Extractionold():
 	DLL_Protect.append(protect)
 	print protect
 def extractDLL(dll):
-	"print extractdll"
+	# "print extractdll"
 	sp()
 	dllName = dll
 		# Part of this loadlibrary comes from: https://www.programcreek.com/python/example/53932/ctypes.wintypes.HANDLE
@@ -4618,12 +5280,13 @@ def extractDLL_Min(dll):
 	print "Done extracting"
 	sp()
 def extractDLL_MinNew(dll):
-	print "NEW: extracting enter"
+	# print "NEW: extracting enter"
 	sp()
 	global pe
 	global modName
 	global o
 	global index
+	extracting=True
 	#print "o val" + str(o)
 	dllName = dll
 	modName = dll
@@ -4637,8 +5300,12 @@ def extractDLL_MinNew(dll):
 	print "o = " + str(o)
 	sp()
 	#initMods(dll)
-	newpath = extractDLLNew(dll)
-	print newpath
+	try:
+		newpath = extractDLLNew(dll, True)
+		print newpath
+	except:
+		pass
+	
 	sp()
  	pe = pefile.PE(newpath)
 	global PE_Protect
@@ -4658,7 +5325,7 @@ def extractDLL_MinNew(dll):
 	#data = pe.get_memory_mapped_image()[entryPoint:entryPoint+vSize]
 	objs[o].data2  = pe.sections[0].get_data()[objs[o].VirtualAdd:objs[o].VirtualAdd+objs[o].vSize]
 
-	print "extracting end"
+	print ("extracting end for " + dll)
 	sp()
 def show1(int):
 		show = "{0:02x}".format(int) #
@@ -4666,11 +5333,13 @@ def show1(int):
 
 def showProtectStatus():
 	print "Mitigations for " + str(peName) + "\n"
+	out=""
+	o=0
+	print outputMitigations()
 	
-	for i in  DLL_Protect:
-		print i
-
-	
+	out2="\nNote: Mitigations are only displayed for scanned modules.\n"
+	out2+="\tUse m command to extract modules.\n"
+	print (out2)
 	
 def setHowDeep():
 	global Depth
@@ -4702,8 +5371,9 @@ def setImageBase():
 	objs[0].ImageBase = vt
 	print "Current image base value is now at " + str(objs[0].ImageBase) + ".\n"
 	sp()	
-def disHereJmp(address, NumOpsDis, Reg):
+def disHereJmp(address, NumOpsDis, Reg, newReg = "default"):
 	global o
+	global linesGoBackFindOP
 	w=0
 	## Capstone does not seem to allow me to start disassemblying at a given point, so I copy out a chunk to  disassemble. I append a 0x00 because it does not always disassemble correctly (or at all) if just two bytes. I cause it not to be displayed through other means. It simply take the starting address of the jmp [reg], disassembles backwards, and copies it to a variable that I examine more closely.
 	lGoBack = linesGoBackFindOP
@@ -4816,19 +5486,25 @@ def disHereJmp(address, NumOpsDis, Reg):
 						counter()
 					else:
 						save = int(save, 16)
-						addListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: address of target jmp [reg]; second parameter: number of lines to go back. third parameter: number of ops to go back.
-	
+						if(newReg == "default"):
+							addListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: address of target jmp [reg]; second parameter: number of lines to go back. third parameter: number of ops to go back.
+						else:
+							addListBaseNewJmp(save, val2.__len__(), NumOpsDis, modName, newReg)
 				else:
 					matchObj = re.match( r'\bnop\b|\bleave\b|\bcall\b|\bret\b|\bjmp\b|\bljmp\b|\bjo\b|\bjno\b|\bjsn\b|\bjs\b|\bje\b|\bjz\b|\bjne\b|\bjnz\b|\bjb\b|\bjnae\b|\bjc\b|\bjnb\bjae\b|\bjnc\b|\bjbe\bjna\b|\bja\b|\bjnben\b|\bjl\b|\bjnge\b|\bjge\bjnl\b|\bjle\b|\bjng\bjg\b|\bjnle\b|\bjp\b|\bjpe\b|\bjnp\b|\bjpo\bjczz\b|\bjecxz\b|\bcall\b|\bint\b|\bdb\b|\bretf\b|\bhltf\b|\bret\b', val2[i-2], re.M|re.I)
 					if not matchObj:
 						save = int(save, 16)
-						addListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: address of target jmp [reg]; second parameter: number of lines to go back. third parameter: number of ops to go back.
+						if(newReg == "default"):
+							addListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: address of target jmp [reg]; second parameter: number of lines to go back. third parameter: number of ops to go back.
+						else:
+							addListBaseNewJmp(save, val2.__len__(), NumOpsDis, modName, newReg)
+						# gefaddListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: address of target jmp [reg]; second parameter: number of lines to go back. third parameter: number of ops to go back.
 						while lGoBack > 1:
 							try:
 								matchObj = re.match( r'\badd\b|\badc\b', val2[i-lGoBack], re.M|re.I)
 								if matchObj: 
-									matchObj = re.match( r'^[add|adc]+ [byte|dword]+ ptr+ \[e[abcds]+[px]+ [+|-]+ 0x|^add [byte|dword]+ ptr+ \[e[abcds][px] \+ 0x|^add e[abcds][px], [dword|byte]+ ptr \[e[abcds][xp] \+ 0x|^add [byte|dword]+ ptr \[eax\], [al|eax]|^add [byte|dword]+ ptr \[ebx\], [bl|bx]|^add [byte|dword]+ ptr \[ecx\], [cl|ecx]|^add [byte|dword]+ ptr \[edx\], [dl|edx]|^[add|adc]+ eax, [dword|byte]+ ptr \[[e|a]+[a|l]+|^[add|adc]+ ebx, [dword|byte]+ ptr \[[e|b]+[b|l]+|^[add|adc]+ ecx, [dword|byte]+ ptr \[[e|c]+[c|l]+|^[add|adc]+ edx, [dword|byte]+ ptr \[[e|d]+[d|l]+|^[add|adc]+ edi, [dword|byte]+ ptr \[[e|d]+[d|i]+|^[add|adc]+ esi, [dword|byte]+ ptr \[[e|s]+[s|i]+|^[add|adc]+ ebp, [dword|byte]+ ptr \[[e|b]+[b|p]+|^[add|adc]+ esp, [dword|byte]+ ptr \[[e|s]+[s|p]+|^[add|adc]+ a[l|h]+, a[l|h]+|^[add|adc]+ b[l|h]+, b[l|h]+|^[add|adc]+ c[l|h]+, c[l|h]+|^[add|adc]+ d[l|h]+, d[l|h]+|^[add|adc]+ di, di|^[add|adc]+ si, si|^[add|adc]+ sp, sp|^[add|adc]+ bp, bp', val2[i-lGoBack], re.M|re.I)   
-									# I am using regular expressions to eliminate what would be garbage gadgets, of which there would be countless, off the wall, unintended instructions that would do nothing of any practical value.
+									# matchObj = re.match( r'^[add|adc]+ [byte|dword]+ ptr+ \[e[abcds]+[px]+ [+|-]+ 0x|^add [byte|dword]+ ptr+ \[e[abcds][px] \+ 0x|^add e[abcds][px], [dword|byte|word]+ ptr \[e[abcds][xp] \+ 0x|^add [byte|dword]+ ptr \[eax\], [al|eax]|^add [byte|dword]+ ptr \[ebx\], [bl|bx]|^add [byte|dword]+ ptr \[ecx\], [cl|ecx]|^add [byte|dword]+ ptr \[edx\], [dl|edx]|^[add|adc]+ eax, [dword|byte|word]+ ptr \[[e|a]+[a|l]+|^[add|adc]+ ebx, [dword|byte|word]+ ptr \[[e|b]+[b|l]+|^[add|adc]+ ecx, [dword|byte|word]+ ptr \[[e|c]+[c|l]+|^[add|adc]+ edx, [dword|byte|word]+ ptr \[[e|d]+[d|l]+|^[add|adc]+ edi, [dword|byte|word]+ ptr \[[e|d]+[d|i]+|^[add|adc]+ esi, [dword|byte|word]+ ptr \[[e|s]+[s|i]+|^[add|adc]+ ebp, [dword|byte|word]+ ptr \[[e|b]+[b|p]+|^[add|adc]+ esp, [dword|byte|word]+ ptr \[[e|s]+[s|p]+|^[add|adc]+ a[l|h]+, a[l|h]+|^[add|adc]+ b[l|h]+, b[l|h]+|^[add|adc]+ c[l|h]+, c[l|h]+|^[add|adc]+ d[l|h]+, d[l|h]+|^[add|adc]+ di, di|^[add|adc]+ si, si|^[add|adc]+ sp, sp|^[add|adc]+ bp, bp', val2[i-lGoBack], re.M|re.I)   
+									matchObj = re.match( r'yoskipthis', val2[i-lGoBack], re.M|re.I)   
 									if not matchObj:
 										y = val2[i-lGoBack]
 										if (y == val2[i-lGoBack]):
@@ -4839,7 +5515,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 
 										#print "ADDDING************************************\n\n"
 										#eax - saving add to specific registers -- far more useful.
-										matchObj1 = re.match( r'^[add|adc]+ [dword|byte]* [ptr]* [\[]*[e]*a[x|l|h]+|[add|adc]+ [e]*a[x|l|h]+ ', val2[i-lGoBack], re.M|re.I)
+										matchObj1 = re.match( r'^[add|adc]+ [dword|byte|word]* [ptr]* [\[]*[e]*a[x|l|h]+|[add|adc]+ [e]*a[x|l|h]+ ', val2[i-lGoBack], re.M|re.I)
 										if matchObj1:
 											# print "***************"
 											# print "b: " + val2[i-lGoBack]
@@ -4887,7 +5563,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 										#	print "ADDDING************************************\n\n"
 										
 										#ebx
-										matchObj1 = re.match( r'^[add|adc]+ [dword|byte]* [ptr]* [\[]*[e]*b[x|l|h]+|[add|adc]+ [e]*b[x|l|h]+', val2[i-lGoBack], re.M|re.I)
+										matchObj1 = re.match( r'^[add|adc]+ [dword|byte|word]* [ptr]* [\[]*[e]*b[x|l|h]+|[add|adc]+ [e]*b[x|l|h]+', val2[i-lGoBack], re.M|re.I)
 
 										
 										if matchObj1:
@@ -4934,7 +5610,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 
 											# addListBaseAddEBX(save, lGoBack, NumOpsDis, modName)
 										#ecx
-										matchObj = re.match( r'^[add|adc]+ [dword|byte]* [ptr]* [\[]*[e]*c[x|l|h]+|[add|adc]+ [e]*c[x|l|h]+', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^[add|adc]+ [dword|byte|word]* [ptr]* [\[]*[e]*c[x|l|h]+|[add|adc]+ [e]*c[x|l|h]+', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -4944,7 +5620,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 
 											# addListBaseAddECX(save, lGoBack, NumOpsDis, modName)
 										#eDx
-										matchObj = re.match( r'^[add|adc]+ [dword|byte]* [ptr]* [\[]*[e]*d[x|l|h]+|[add|adc]+ [e]*d[x|l|h]+', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^[add|adc]+ [dword|byte|word]* [ptr]* [\[]*[e]*d[x|l|h]+|[add|adc]+ [e]*d[x|l|h]+', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -4954,7 +5630,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 
 											# addListBaseAddEDX(save, lGoBack, NumOpsDis, modName)
 										#ESI 
-										matchObj = re.match( r'^[add|adc]+ [dword|byte]* [ptr]* [\[]*[e]*si|[add|adc]+ [e]*si', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^[add|adc]+ [dword|byte|word]* [ptr]* [\[]*[e]*si|[add|adc]+ [e]*si', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 
 											numLines= giveLineNum(val5,val2[i-lGoBack])
@@ -4964,7 +5640,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												addListBaseAddESI(saveq, numLines, NumOpsDis, modName)
 											# addListBaseAddESI(save, lGoBack, NumOpsDis, modName)
 										#EDI 
-										matchObj = re.match( r'^[add|adc]+ [dword|byte]* [ptr]* [\[]*[e]*di|[add|adc]+ [e]*di', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^[add|adc]+ [dword|byte|word]* [ptr]* [\[]*[e]*di|[add|adc]+ [e]*di', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 
 											numLines= giveLineNum(val5,val2[i-lGoBack])
@@ -4974,7 +5650,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												addListBaseAddEDI(saveq, numLines, NumOpsDis, modName)
 											# addListBaseAddEDI(save, lGoBack, NumOpsDis, modName)
 										#esp
-										matchObj = re.match( r'^[add|adc]+ [dword|byte]* [ptr]* [\[]*[e]*sp|[add|adc]+ [e]*sp', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^[add|adc]+ [dword|byte|word]* [ptr]* [\[]*[e]*sp|[add|adc]+ [e]*sp', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -4984,7 +5660,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 
 											# addListBaseAddESP(save, lGoBack, NumOpsDis, modName)
 										#EBP
-										matchObj = re.match( r'^[add|adc]+ [dword|byte]* [ptr]* [\[]*[e]*bp|[add|adc]+ [e]*bp', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^[add|adc]+ [dword|byte|word]* [ptr]* [\[]*[e]*bp|[add|adc]+ [e]*bp', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5002,7 +5678,8 @@ def disHereJmp(address, NumOpsDis, Reg):
 								if matchObj: 
 									#print "**sub**"
 									#print val2[i-lGoBack]
-									matchObj = re.match( r'^[sub|sbb]+ [byte|dword]+ ptr+ \[e[abcds]+[px]+ [+|-]+ 0x|^[sub|sbb]+ [byte|dword]+ ptr+ \[e[abcds][px] \+ 0x|^[sub|sbb]+ e[abcds][px], [dword|byte]+ ptr \[e[abcds][xp] \+ 0x|^[sub|sbb]+ [byte|dword]+ ptr \[eax\], [al|eax]+|^[sub|sbb]+ [byte|dword]+ ptr \[ebx\], [bl|bx]+|^[sub|sbb]+ [byte|dword]+ ptr \[ecx\], [cl|ecx]+|^[sub|sbb]+ [byte|dword]+ ptr \[edx\], [dl|edx]+|^[sub|sbb]+ eax, [dword|byte]+ ptr \[[e|a]+[a|l]+|^[sub|sbb]+ ebx, [dword|byte]+ ptr \[[e|b]+[b|l]+|^[sub|sbb]+ ecx, [dword|byte]+ ptr \[[e|c]+[c|l]+|^[sub|sbb]+ edx, [dword|byte]+ ptr \[[e|d]+[d|l]+|^[sub|sbb]+ edi, [dword|byte]+ ptr \[[e|d]+[d|i]+|^[sub|sbb]+ esi, [dword|byte]+ ptr \[[e|s]+[s|i]+|^[sub|sbb]+ ebp, [dword|byte]+ ptr \[[e|b]+[b|p]+|^[sub|sbb]+ esp, [dword|byte]+ ptr \[[e|s]+[s|p]+|^[sub|sbb]+ a[l|h]+, a[l|h]+|^[sub|sbb]+ b[l|h]+, b[l|h]+|^[sub|sbb]+ c[l|h]+, c[l|h]+|^[sub|sbb]+ d[l|h]+, d[l|h]+|^[sub|sbb]+ di, di|^[sub|sbb]+ si, si|^[sub|sbb]+ sp, sp|^[sub|sbb]+ bp, bp', val2[i-lGoBack], re.M|re.I)  
+									# matchObj = re.match( r'^[sub|sbb]+ [byte|dword]+ ptr+ \[e[abcds]+[px]+ [+|-]+ 0x|^[sub|sbb]+ [byte|dword]+ ptr+ \[e[abcds][px] \+ 0x|^[sub|sbb]+ e[abcds][px], [dword|byte|word]+ ptr \[e[abcds][xp] \+ 0x|^[sub|sbb]+ [byte|dword]+ ptr \[eax\], [al|eax]+|^[sub|sbb]+ [byte|dword]+ ptr \[ebx\], [bl|bx]+|^[sub|sbb]+ [byte|dword]+ ptr \[ecx\], [cl|ecx]+|^[sub|sbb]+ [byte|dword]+ ptr \[edx\], [dl|edx]+|^[sub|sbb]+ eax, [dword|byte|word]+ ptr \[[e|a]+[a|l]+|^[sub|sbb]+ ebx, [dword|byte|word]+ ptr \[[e|b]+[b|l]+|^[sub|sbb]+ ecx, [dword|byte|word]+ ptr \[[e|c]+[c|l]+|^[sub|sbb]+ edx, [dword|byte|word]+ ptr \[[e|d]+[d|l]+|^[sub|sbb]+ edi, [dword|byte|word]+ ptr \[[e|d]+[d|i]+|^[sub|sbb]+ esi, [dword|byte|word]+ ptr \[[e|s]+[s|i]+|^[sub|sbb]+ ebp, [dword|byte|word]+ ptr \[[e|b]+[b|p]+|^[sub|sbb]+ esp, [dword|byte|word]+ ptr \[[e|s]+[s|p]+|^[sub|sbb]+ a[l|h]+, a[l|h]+|^[sub|sbb]+ b[l|h]+, b[l|h]+|^[sub|sbb]+ c[l|h]+, c[l|h]+|^[sub|sbb]+ d[l|h]+, d[l|h]+|^[sub|sbb]+ di, di|^[sub|sbb]+ si, si|^[sub|sbb]+ sp, sp|^[sub|sbb]+ bp, bp', val2[i-lGoBack], re.M|re.I)  
+									matchObj = re.match( r'yoskipthis', val2[i-lGoBack], re.M|re.I)   
 									if not matchObj:
 										numLines= giveLineNum(val5,val2[i-lGoBack])
 										z =stupidPreJ(val5, numLines)
@@ -5010,7 +5687,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 											addListBaseSub(saveq, numLines, NumOpsDis, modName)
 										# addListBaseSub(save, lGoBack, NumOpsDis, modName) 
 										#eax - saving add to specific registers -- far more useful.
-										matchObj = re.match( r'^[sub|sbb]+ [dword|byte]* [ptr]* [\[]*[e]*a[x|l|h]*|[sub|sbb]+ [e]*a[x|l|h]', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^[sub|sbb]+ [dword|byte|word]* [ptr]* [\[]*[e]*a[x|l|h]*|[sub|sbb]+ [e]*a[x|l|h]', val2[i-lGoBack], re.M|re.I)
 										if matchObj:										
 											numLines= giveLineNum(val5,val2[i-lGoBack])				
 											z =stupidPreJ(val5, numLines)
@@ -5019,7 +5696,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 											# addListBaseSubEAX(save, lGoBack, NumOpsDis, modName)
 										
 										#ebx
-										matchObj = re.match( r'^[sub|sbb]+ [dword|byte]* [ptr]* [\[]*[e]*b[x|l|h]*|[sub|sbb]+ [e]*b[x|l|h]*', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^[sub|sbb]+ [dword|byte|word]* [ptr]* [\[]*[e]*b[x|l|h]*|[sub|sbb]+ [e]*b[x|l|h]*', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5027,7 +5704,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												addListBaseSubEBX(saveq, numLines, NumOpsDis, modName)
 											# addListBaseSubEBX(save, lGoBack, NumOpsDis, modName)
 										#ecx
-										matchObj = re.match( r'^[sub|sbb]+ [dword|byte]* [ptr]* [\[]*[e]*c[x|l|h]*|[sub|sbb]+ [e]*c[x|l|h]*', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^[sub|sbb]+ [dword|byte|word]* [ptr]* [\[]*[e]*c[x|l|h]*|[sub|sbb]+ [e]*c[x|l|h]*', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5035,7 +5712,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												addListBaseSubECX(saveq, numLines, NumOpsDis, modName)
 											# addListBaseSubECX(save, lGoBack, NumOpsDis, modName)
 										#eDx
-										matchObj = re.match( r'^[sub|sbb]+ [dword|byte]* [ptr]* [\[]*[e]*d[x|l|h]*|[sub|sbb]+ [e]*d[x|l|h]*', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^[sub|sbb]+ [dword|byte|word]* [ptr]* [\[]*[e]*d[x|l|h]*|[sub|sbb]+ [e]*d[x|l|h]*', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5043,7 +5720,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												addListBaseSubEDX(saveq, numLines, NumOpsDis, modName)
 											# addListBaseSubEDX(save, lGoBack, NumOpsDis, modName)
 										#ESI 
-										matchObj = re.match( r'^[sub|sbb]+ [dword|byte]* [ptr]* [\[]*[e]*si|[sub|sbb]+ [e]*si', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^[sub|sbb]+ [dword|byte|word]* [ptr]* [\[]*[e]*si|[sub|sbb]+ [e]*si', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5051,7 +5728,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												addListBaseSubESI(saveq, numLines, NumOpsDis, modName)
 											# addListBaseSubESI(save, lGoBack, NumOpsDis, modName)
 										#EDI 
-										matchObj = re.match( r'^[sub|sbb]+ [dword|byte]* [ptr]* [\[]*[e]*di|[sub|sbb]+ [e]*di', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^[sub|sbb]+ [dword|byte|word]* [ptr]* [\[]*[e]*di|[sub|sbb]+ [e]*di', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5059,7 +5736,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												addListBaseSubEDI(saveq, numLines, NumOpsDis, modName)
 											# addListBaseSubEDI(save, lGoBack, NumOpsDis, modName)
 										#esp
-										matchObj = re.match( r'^[sub|sbb]+ [dword|byte]* [ptr]* [\[]*[e]*sp|[sub|sbb]+ [e]*sp', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^[sub|sbb]+ [dword|byte|word]* [ptr]* [\[]*[e]*sp|[sub|sbb]+ [e]*sp', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5067,7 +5744,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												addListBaseSubESP(saveq, numLines, NumOpsDis, modName)
 											# addListBaseSubESP(save, lGoBack, NumOpsDis, modName)
 										#EBP
-										matchObj = re.match( r'^[sub|sbb]+ [dword|byte]* [ptr]* [\[]*[e]*bp|[sub|sbb]+ [e]*bp', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^[sub|sbb]+ [dword|byte|word]* [ptr]* [\[]*[e]*bp|[sub|sbb]+ [e]*bp', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5121,7 +5798,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												# addListBaseMulEAX(save, lGoBack, NumOpsDis, modName)
 												# addListBaseMulEDX(save, lGoBack, NumOpsDis, modName)
 
-										matchObj = re.match( r'^imul[b|w|l]* [e]*ax, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*ax, [dword|byte]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^imul[b|w|l]* [e]*ax, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*ax, [dword|byte|word]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 
 											numLines= giveLineNum(val5,val2[i-lGoBack])
@@ -5144,7 +5821,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												# addListBaseMulEAX(save, lGoBack, NumOpsDis, modName)
 
 										#ebx
-										matchObj = re.match( r'^imul[b|w|l]* [e]*bx, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*bx, [dword|byte]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^imul[b|w|l]* [e]*bx, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*bx, [dword|byte|word]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5165,7 +5842,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 													addListBaseMulEBX(saveq, numLines, NumOpsDis, modName)
 												# addListBaseMulEBX(save, lGoBack, NumOpsDis, modName)
 										#ecx
-										matchObj = re.match( r'^imul[b|w|l]* [e]*cx, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*cx, [dword|byte]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^imul[b|w|l]* [e]*cx, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*cx, [dword|byte|word]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5186,7 +5863,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 													addListBaseMulECX(saveq, numLines, NumOpsDis, modName)
 												# addListBaseMulECX(save, lGoBack, NumOpsDis, modName)
 										#eDx
-										matchObj = re.match( r'^imul[b|w|l]* [e]*dx, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*dx, [dword|byte]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^imul[b|w|l]* [e]*dx, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*dx, [dword|byte|word]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5209,7 +5886,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 													# addListBaseMulEDX(save, lGoBack, NumOpsDis, modName)
 
 										#ESI 
-										matchObj = re.match( r'^imul[b|w|l]* [e]*si, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*si, [dword|byte]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^imul[b|w|l]* [e]*si, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*si, [dword|byte|word]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5231,7 +5908,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 													# addListBaseMulESI(save, lGoBack, NumOpsDis, modName)
 
 										#EDI 
-										matchObj = re.match( r'^imul[b|w|l]* [e]*di, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*di, [dword|byte]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^imul[b|w|l]* [e]*di, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*di, [dword|byte|word]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5253,7 +5930,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 													# addListBaseMulEDI(save, lGoBack, NumOpsDis, modName)
 										
 										#esp
-										matchObj = re.match( r'^imul[b|w|l]* [e]*sp, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*sp, [dword|byte]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^imul[b|w|l]* [e]*sp, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*sp, [dword|byte|word]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											#addListBaseMulESP(save, lGoBack, NumOpsDis, modName)
 											pass
@@ -5266,7 +5943,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												#addListBaseMulESP(save, lGoBack, NumOpsDis, modName)
 												pass
 										#EBP
-										matchObj = re.match( r'^imul[b|w|l]* [e]*bp, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*bp, [dword|byte]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^imul[b|w|l]* [e]*bp, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*bp, [dword|byte|word]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5314,7 +5991,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 								matchObj = re.match( r'\bmov\b', val2[i-lGoBack], re.M|re.I)
 							
 								if matchObj: 
-									matchObj = re.match( r'^mov [e]*a[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h]|^mov [e]*b[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*b[x|l|h]*|^mov [e]*c[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*c[x|l|h]*|^mov [e]*d[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*d[x|l|h]*|^mov [e]*di, [dword|byte]+ [ptr]* \[[e]*di|^mov [e]*si, [dword|byte]+ [ptr]* \[[e]*si|^mov [e]*sp, [dword|byte]+ [ptr]* \[[e]*sp|^mov [e]*bp, [dword|byte]+ [ptr]* \[[e]*bp|mov [e]*a[x|l|h]+, [e]*a[x|l|h]+|mov [e]*b[x|l|h]+, [e]*b[x|l|h]+|mov [e]*c[x|l|h]+, [e]*c[x|l|h]+|mov [e]*d[x|l|h]+, [e]*d[x|l|h]+|mov [e]*di, [e]*di|mov [e]*si, [e]*si|mov [e]*bp, [e]*bp+|mov [e]*sp, [e]*sp|^mov [e]*a[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h] [+|-]+|^mov [dword|byte]+ ptr \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ |^mov [e]*[abcdspb]+[x|l|h|i|p]+, [dword|byte]+ ptr \[0x|^mov [e]*a[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h]+ [+|-]+|^mov [e]*[abcdspb]+[x|l|h|i|p]+, es|^mov [e]*[abcdsb]+[x|l|h|p|i]+, [dword|byte]+ [ptr]* \[[e]*[abcdsb]+[x|l|h|p|i]+ [-|+]+ 0x[0-9]*', val2[i-lGoBack], re.M|re.I)
+									matchObj = re.match( r'^mov [e]*a[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h]|^mov [e]*b[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*b[x|l|h]*|^mov [e]*c[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*c[x|l|h]*|^mov [e]*d[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*d[x|l|h]*|^mov [e]*di, [dword|byte|word]+ [ptr]* \[[e]*di|^mov [e]*si, [dword|byte|word]+ [ptr]* \[[e]*si|^mov [e]*sp, [dword|byte|word]+ [ptr]* \[[e]*sp|^mov [e]*bp, [dword|byte|word]+ [ptr]* \[[e]*bp|mov [e]*a[x|l|h]+, [e]*a[x|l|h]+|mov [e]*b[x|l|h]+, [e]*b[x|l|h]+|mov [e]*c[x|l|h]+, [e]*c[x|l|h]+|mov [e]*d[x|l|h]+, [e]*d[x|l|h]+|mov [e]*di, [e]*di|mov [e]*si, [e]*si|mov [e]*bp, [e]*bp+|mov [e]*sp, [e]*sp|^mov [e]*a[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h] [+|-]+|^mov [dword|byte|word]+ ptr \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ |^mov [e]*[abcdspb]+[x|l|h|i|p]+, [dword|byte|word]+ ptr \[0x|^mov [e]*a[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h]+ [+|-]+|^mov [e]*[abcdspb]+[x|l|h|i|p]+, es|^mov [e]*[abcdsb]+[x|l|h|p|i]+, [dword|byte|word]+ [ptr]* \[[e]*[abcdsb]+[x|l|h|p|i]+ [-|+]+ 0x[0-9]*', val2[i-lGoBack], re.M|re.I)
 									if not matchObj:
 										numLines= giveLineNum(val5,val2[i-lGoBack])
 										z =stupidPreJ(val5, numLines)
@@ -5324,7 +6001,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 										# addListBaseMov(save, lGoBack, NumOpsDis, modName) 
 										#eax - saving add to specific registers -- far more useful.
 																				
-										matchObj = re.match( r'^mov [e]*a[x|l|h]+|^mov [dword|byte]+ ptr \[[e]*a[x|l|h]+', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^mov [e]*a[x|l|h]+|^mov [dword|byte|word]+ ptr \[[e]*a[x|l|h]+', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5333,7 +6010,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												addListBaseMovEAX(saveq, numLines, NumOpsDis, modName)
 											# addListBaseMovEAX(save, lGoBack, NumOpsDis, modName)
 										#ebx
-										matchObj = re.match( r'^mov [e]*b[x|l|h]+|^mov [dword|byte]+ ptr \[[e]*b[x|l|h]+', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^mov [e]*b[x|l|h]+|^mov [dword|byte|word]+ ptr \[[e]*b[x|l|h]+', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5342,7 +6019,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												addListBaseMovEBX(saveq, numLines, NumOpsDis, modName)
 											# addListBaseMovEBX(save, lGoBack, NumOpsDis, modName)
 										#ecx
-										matchObj = re.match( r'^mov [e]*c[x|l|h]+|^mov [dword|byte]+ ptr \[[e]*c[x|l|h]+', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^mov [e]*c[x|l|h]+|^mov [dword|byte|word]+ ptr \[[e]*c[x|l|h]+', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5352,7 +6029,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 											# addListBaseMovECX(save, lGoBack, NumOpsDis, modName)
 											
 										#eDx
-										matchObj = re.match( r'^mov [e]*d[x|l|h]+|^mov [dword|byte]+ ptr \[[e]*d[x|l|h]+', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^mov [e]*d[x|l|h]+|^mov [dword|byte|word]+ ptr \[[e]*d[x|l|h]+', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5362,7 +6039,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 											# addListBaseMovEDX(save, lGoBack, NumOpsDis, modName)
 
 										#ESI 
-										matchObj = re.match( r'^mov [e]*si|^mov [dword|byte]+ ptr \[[e]*si', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^mov [e]*si|^mov [dword|byte|word]+ ptr \[[e]*si', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5371,7 +6048,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												addListBaseMovESI(saveq, numLines, NumOpsDis, modName)
 											# addListBaseMovESI(save, lGoBack, NumOpsDis, modName)
 										#EDI 
-										matchObj = re.match( r'^mov [e]*di|^mov [dword|byte]+ ptr \[[e]*di', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^mov [e]*di|^mov [dword|byte|word]+ ptr \[[e]*di', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5380,7 +6057,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												addListBaseMovEDI(saveq, numLines, NumOpsDis, modName)
 											# addListBaseMovEDI(save, lGoBack, NumOpsDis, modName)
 										#esp
-										matchObj = re.match( r'^mov [e]*sp|^mov [dword|byte]+ ptr \[[e]*sp', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^mov [e]*sp|^mov [dword|byte|word]+ ptr \[[e]*sp', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5389,7 +6066,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												addListBaseMovESP(saveq, numLines, NumOpsDis, modName)
 											# addListBaseMovESP(save, lGoBack, NumOpsDis, modName)
 										#EBP
-										matchObj = re.match( r'^mov [e]*bp|^mov [dword|byte]+ ptr \[[e]*bp', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^mov [e]*bp|^mov [dword|byte|word]+ ptr \[[e]*bp', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5405,7 +6082,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 								matchObj = re.match( r'\blea\b', val2[i-lGoBack], re.M|re.I)
 							
 								if matchObj: 
-									matchObj = re.match( r'^lea [e]*a[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h]*|^lea [e]*b[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*b[x|l|h]*|^lea [e]*c[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*c[x|l|h]*|^lea [e]*d[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*d[x|l|h]*|^lea [e]*di, [dword|byte]+ [ptr]* \[[e]*di|^lea [e]*si, [dword|byte]+ [ptr]* \[[e]*si|^lea [e]*sp, [dword|byte]+ [ptr]* \[[e]*sp|^lea [e]*bp, [dword|byte]+ [ptr]* \[[e]*bp|lea [e]*a[x|l|h]+, [e]*a[x|l|h]+|lea [e]*b[x|l|h]+, [e]*b[x|l|h]+|lea [e]*c[x|l|h]+, [e]*c[x|l|h]+|lea [e]*d[x|l|h]+, [e]*d[x|l|h]+|lea [e]*di, [e]*di|lea [e]*si, [e]*si|lea [e]*bp, [e]*bp+|lea [e]*sp, [e]*sp|^lea [e]*a[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h] [+|-]+|^lea [dword|byte]+ ptr \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ |^lea [e]*[abcdspb]+[x|l|h|i|p]+, [dword|byte]+ ptr \[0x|^lea [e]*a[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h]+ [+|-]+|^lea [e]*[abcdspb]+[x|l|h|i|p]+, es|^lea [e]*[abcdspb]+[x|l|h|i|p]+, [dword|byte]+ [ptr]* \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ [e]*[abcdspb]+[x|l|h|i|p]+\*', val2[i-lGoBack], re.M|re.I)
+									matchObj = re.match( r'^lea [e]*a[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h]*|^lea [e]*b[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*b[x|l|h]*|^lea [e]*c[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*c[x|l|h]*|^lea [e]*d[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*d[x|l|h]*|^lea [e]*di, [dword|byte|word]+ [ptr]* \[[e]*di|^lea [e]*si, [dword|byte|word]+ [ptr]* \[[e]*si|^lea [e]*sp, [dword|byte|word]+ [ptr]* \[[e]*sp|^lea [e]*bp, [dword|byte|word]+ [ptr]* \[[e]*bp|lea [e]*a[x|l|h]+, [e]*a[x|l|h]+|lea [e]*b[x|l|h]+, [e]*b[x|l|h]+|lea [e]*c[x|l|h]+, [e]*c[x|l|h]+|lea [e]*d[x|l|h]+, [e]*d[x|l|h]+|lea [e]*di, [e]*di|lea [e]*si, [e]*si|lea [e]*bp, [e]*bp+|lea [e]*sp, [e]*sp|^lea [e]*a[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h] [+|-]+|^lea [dword|byte|word]+ ptr \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ |^lea [e]*[abcdspb]+[x|l|h|i|p]+, [dword|byte|word]+ ptr \[0x|^lea [e]*a[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h]+ [+|-]+|^lea [e]*[abcdspb]+[x|l|h|i|p]+, es|^lea [e]*[abcdspb]+[x|l|h|i|p]+, [dword|byte|word]+ [ptr]* \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ [e]*[abcdspb]+[x|l|h|i|p]+\*', val2[i-lGoBack], re.M|re.I)
 									if not matchObj:
 										numLines= giveLineNum(val5,val2[i-lGoBack])
 										z =stupidPreJ(val5, numLines)
@@ -5415,7 +6092,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 										#eax - saving add to specific registers -- far more useful.
 										
 										
-										matchObj = re.match( r'^lea [e]*a[x|l|h]+|^lea [dword|byte]+ ptr \[[e]*a[x|l|h]', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^lea [e]*a[x|l|h]+|^lea [dword|byte|word]+ ptr \[[e]*a[x|l|h]', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5423,7 +6100,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												addListBaseLeaEAX(saveq, numLines, NumOpsDis, modName)
 											# addListBaseLeaEAX(save, lGoBack, NumOpsDis, modName)
 										#ebx
-										matchObj = re.match( r'^lea [e]*b[x|l|h]+|^lea [dword|byte]+ ptr \[[e]*b[x|l|h]', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^lea [e]*b[x|l|h]+|^lea [dword|byte|word]+ ptr \[[e]*b[x|l|h]', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5431,7 +6108,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												addListBaseLeaEBX(saveq, numLines, NumOpsDis, modName)
 											# addListBaseLeaEBX(save, lGoBack, NumOpsDis, modName)
 										#ecx
-										matchObj = re.match( r'^lea [e]*c[x|l|h]+|^lea [dword|byte]+ ptr \[[e]*c[x|l|h]', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^lea [e]*c[x|l|h]+|^lea [dword|byte|word]+ ptr \[[e]*c[x|l|h]', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5439,7 +6116,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												addListBaseLeaECX(saveq, numLines, NumOpsDis, modName)
 											# addListBaseLeaECX(save, lGoBack, NumOpsDis, modName)
 										#eDx
-										matchObj = re.match( r'^lea [e]*d[x|l|h]+|^lea [dword|byte]+ ptr \[[e]*d[x|l|h]', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^lea [e]*d[x|l|h]+|^lea [dword|byte|word]+ ptr \[[e]*d[x|l|h]', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5448,7 +6125,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 											# addListBaseLeaEDX(save, lGoBack, NumOpsDis, modName)
 
 										#ESI 
-										matchObj = re.match( r'^lea [e]*si|^lea [dword|byte]+ ptr \[[e]*si', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^lea [e]*si|^lea [dword|byte|word]+ ptr \[[e]*si', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5456,7 +6133,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												addListBaseLeaESI(saveq, numLines, NumOpsDis, modName)
 											# addListBaseLeaESI(save, lGoBack, NumOpsDis, modName)
 										#EDI 
-										matchObj = re.match( r'^lea [e]*di|^lea [dword|byte]+ ptr \[[e]*di', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^lea [e]*di|^lea [dword|byte|word]+ ptr \[[e]*di', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											# print "leaedi enter"
 											numLines= giveLineNum(val5,val2[i-lGoBack])
@@ -5466,7 +6143,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												addListBaseLeaEDI(saveq, numLines, NumOpsDis, modName)
 											# addListBaseLeaEDI(save, lGoBack, NumOpsDis, modName)
 										#esp
-										matchObj = re.match( r'^lea [e]*sp|^lea [dword|byte]+ ptr \[[e]*sp', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^lea [e]*sp|^lea [dword|byte|word]+ ptr \[[e]*sp', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5474,7 +6151,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 												addListBaseLeaESP(saveq, numLines, NumOpsDis, modName)
 											# addListBaseLeaESP(save, lGoBack, NumOpsDis, modName)
 										#EBP
-										matchObj = re.match( r'^lea [e]*bp|^lea [dword|byte]+ ptr \[[e]*bp', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^lea [e]*bp|^lea [dword|byte|word]+ ptr \[[e]*bp', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -5490,7 +6167,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 								matchObj = re.match( r'\bmov\b', val2[i-lGoBack], re.M|re.I)
 							
 								if matchObj: 
-									matchObj = re.match( r'^mov [e]*a[x|l]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h]*|^mov [e]*b[x|l]+, [dword|byte]+ [ptr]* \[[e]*b[x|l|h]*|^mov [e]*c[x|l]+, [dword|byte]+ [ptr]* \[[e]*c[x|l|h]*|^mov [e]*d[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*d[x|l|h]*|^mov [e]*di, [dword|byte]+ [ptr]* \[[e]*di|^mov [e]*si, [dword|byte]+ [ptr]* \[[e]*si|^mov [e]*sp, [dword|byte]+ [ptr]* \[[e]*sp|^mov [e]*bp, [dword|byte]+ [ptr]* \[[e]*bp|mov [e]*a[x|l]+, [e]*a[x|l|h]+|mov [e]*b[x|l]+, [e]*b[x|l|h]+|mov [e]*c[x|l|h]+, [e]*c[x|l|h]+|mov [e]*d[x|l]+, [e]*d[x|l|h]+|mov [e]*di, [e]*di|mov [e]*si, [e]*si|mov [e]*bp, [e]*bp+|mov [e]*sp, [e]*sp|^mov [e]*a[x|l]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h] [+|-]+|^mov [dword|byte]+ ptr \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ |^mov [e]*[abcdspb]+[x|l|i|p]+, [dword|byte]+ ptr \[0x|^mov [e]*a[x|l]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h]+ [+|-]+|^mov [e]*[abcdspb]+[x|l|i|p]+, es', val2[i-lGoBack], re.M|re.I)
+									matchObj = re.match( r'^mov [e]*a[x|l]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h]*|^mov [e]*b[x|l]+, [dword|byte|word]+ [ptr]* \[[e]*b[x|l|h]*|^mov [e]*c[x|l]+, [dword|byte|word]+ [ptr]* \[[e]*c[x|l|h]*|^mov [e]*d[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*d[x|l|h]*|^mov [e]*di, [dword|byte|word]+ [ptr]* \[[e]*di|^mov [e]*si, [dword|byte|word]+ [ptr]* \[[e]*si|^mov [e]*sp, [dword|byte|word]+ [ptr]* \[[e]*sp|^mov [e]*bp, [dword|byte|word]+ [ptr]* \[[e]*bp|mov [e]*a[x|l]+, [e]*a[x|l|h]+|mov [e]*b[x|l]+, [e]*b[x|l|h]+|mov [e]*c[x|l|h]+, [e]*c[x|l|h]+|mov [e]*d[x|l]+, [e]*d[x|l|h]+|mov [e]*di, [e]*di|mov [e]*si, [e]*si|mov [e]*bp, [e]*bp+|mov [e]*sp, [e]*sp|^mov [e]*a[x|l]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h] [+|-]+|^mov [dword|byte|word]+ ptr \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ |^mov [e]*[abcdspb]+[x|l|i|p]+, [dword|byte|word]+ ptr \[0x|^mov [e]*a[x|l]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h]+ [+|-]+|^mov [e]*[abcdspb]+[x|l|i|p]+, es', val2[i-lGoBack], re.M|re.I)
 									if not matchObj:
 										numLines= giveLineNum(val5,val2[i-lGoBack])
 										z =stupidPreJ(val5, numLines)
@@ -5573,7 +6250,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 								matchObj = re.match( r'\bmov\b', val2[i-lGoBack], re.M|re.I)
 							
 								if matchObj: 
-									matchObj = re.match( r'^mov [e]*a[x|l]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h]*|^mov [e]*b[x|l]+, [dword|byte]+ [ptr]* \[[e]*b[x|l|h]*|^mov [e]*c[x|l]+, [dword|byte]+ [ptr]* \[[e]*c[x|l|h]*|^mov [e]*d[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*d[x|l|h]*|^mov [e]*di, [dword|byte]+ [ptr]* \[[e]*di|^mov [e]*si, [dword|byte]+ [ptr]* \[[e]*si|^mov [e]*sp, [dword|byte]+ [ptr]* \[[e]*sp|^mov [e]*bp, [dword|byte]+ [ptr]* \[[e]*bp|mov [e]*a[x|l]+, [e]*a[x|l|h]+|mov [e]*b[x|l]+, [e]*b[x|l|h]+|mov [e]*c[x|l|h]+, [e]*c[x|l|h]+|mov [e]*d[x|l]+, [e]*d[x|l|h]+|mov [e]*di, [e]*di|mov [e]*si, [e]*si|mov [e]*bp, [e]*bp+|mov [e]*sp, [e]*sp|^mov [e]*a[x|l]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h] [+|-]+|^mov [dword|byte]+ ptr \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ |^mov [e]*[abcdspb]+[x|l|i|p]+, [dword|byte]+ ptr \[0x|^mov [e]*a[x|l]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h]+ [+|-]+|^mov [e]*[abcdspb]+[x|l|i|p]+, es', val2[i-lGoBack], re.M|re.I)
+									matchObj = re.match( r'^mov [e]*a[x|l]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h]*|^mov [e]*b[x|l]+, [dword|byte|word]+ [ptr]* \[[e]*b[x|l|h]*|^mov [e]*c[x|l]+, [dword|byte|word]+ [ptr]* \[[e]*c[x|l|h]*|^mov [e]*d[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*d[x|l|h]*|^mov [e]*di, [dword|byte|word]+ [ptr]* \[[e]*di|^mov [e]*si, [dword|byte|word]+ [ptr]* \[[e]*si|^mov [e]*sp, [dword|byte|word]+ [ptr]* \[[e]*sp|^mov [e]*bp, [dword|byte|word]+ [ptr]* \[[e]*bp|mov [e]*a[x|l]+, [e]*a[x|l|h]+|mov [e]*b[x|l]+, [e]*b[x|l|h]+|mov [e]*c[x|l|h]+, [e]*c[x|l|h]+|mov [e]*d[x|l]+, [e]*d[x|l|h]+|mov [e]*di, [e]*di|mov [e]*si, [e]*si|mov [e]*bp, [e]*bp+|mov [e]*sp, [e]*sp|^mov [e]*a[x|l]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h] [+|-]+|^mov [dword|byte|word]+ ptr \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ |^mov [e]*[abcdspb]+[x|l|i|p]+, [dword|byte|word]+ ptr \[0x|^mov [e]*a[x|l]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h]+ [+|-]+|^mov [e]*[abcdspb]+[x|l|i|p]+, es', val2[i-lGoBack], re.M|re.I)
 									if not matchObj:
 
 										numLines= giveLineNum(val5,val2[i-lGoBack])
@@ -5654,7 +6331,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 
 						#now5
 							try:
-								matchObj = re.match( r'^mov dword ptr \[[e]*[abcdspbixfs]*\], [e]*[acbdps]+[x|p|i]+|^mov \[[e]*[abcdspbixfs]*\], [e]*[acbdps]+[x|p|i]+', val2[i-lGoBack], re.M|re.I)
+								matchObj = re.match( r'^mov dword ptr \[[e]*', val2[i-lGoBack], re.M|re.I)
 								if matchObj:
 									# print "magicalDeref"
 									numLines= giveLineNum(val5,val2[i-lGoBack])
@@ -5662,60 +6339,62 @@ def disHereJmp(address, NumOpsDis, Reg):
 									if z == True:
 										addListMovDeref(saveq, numLines, NumOpsDis, modName)
 
-									matchObj = re.match( r'^mov dword ptr \[[e]*a[x|l]+\], [e]*[cdspb]+[x|i|p]+|^mov dword ptr \[[e]*a[x|l]+\], [e]*[cdspb]+[x|i|p]+', val2[i-lGoBack], re.M|re.I)
-									if matchObj:
-										numLines= giveLineNum(val5,val2[i-lGoBack])
-										z =stupidPreJ(val5, numLines)
-										if z == True:
-											addListMovDerefEAX(saveq, numLines, NumOpsDis, modName)
+								matchObj = re.match( r'^mov dword ptr \[[e]*a[x|l]+.*\], [e]*[abcdsb]+|^mov dword ptr \[[e]*a[x|l]+.*\], [dword|word|byte]* ptr \[[e]*[abcdsb]+', val2[i-lGoBack], re.M|re.I)
+								if matchObj:
+									numLines= giveLineNum(val5,val2[i-lGoBack])
+									z =stupidPreJ(val5, numLines)
+									# print ("found", numLines)
+									if z == True:
+										# print "found3"
+										addListMovDerefEAX(saveq, numLines, NumOpsDis, modName)
 
 
-									matchObj = re.match( r'^mov dword ptr \[[e]*b[x|l]+\], [e]*[acdsp]+[x|i|p]+|^mov dword ptr \[[e]*b[x|l]+\], [e]*[acdsp]+[x|i|p]+', val2[i-lGoBack], re.M|re.I)
-									if matchObj:
-										numLines= giveLineNum(val5,val2[i-lGoBack])
-										z =stupidPreJ(val5, numLines)
-										if z == True:
-											addListMovDerefEBX(saveq, numLines, NumOpsDis, modName)
+								matchObj = re.match( r'^mov dword ptr \[[e]*b[x|l]+.*\], [e]*[abcdsb]+|^mov dword ptr \[[e]*b[x|l]+.*\], [dword|word|byte]* ptr \[[e]*[abcdsb]+', val2[i-lGoBack], re.M|re.I)
+								if matchObj:
+									numLines= giveLineNum(val5,val2[i-lGoBack])
+									z =stupidPreJ(val5, numLines)
+									if z == True:
+										addListMovDerefEBX(saveq, numLines, NumOpsDis, modName)
 
 
-									matchObj = re.match( r'^mov dword ptr \[[e]*c[x|l]+\], [e]*[adspb]+[x|i|p]+|^mov dword ptr \[[e]*c[x|l]+\], [e]*[adspb]+[x|i|p]+', val2[i-lGoBack], re.M|re.I)
-									if matchObj:
-										numLines= giveLineNum(val5,val2[i-lGoBack])
-										z =stupidPreJ(val5, numLines)
-										if z == True:
-											addListMovDerefECX(saveq, numLines, NumOpsDis, modName)
+								matchObj = re.match( r'^mov dword ptr \[[e]*c[x|l]+.*\], [e]*[abcdsb]+|^mov dword ptr \[[e]*c[x|l]+.*\], [dword|word|byte]* ptr \[[e]*[abcdsb]+', val2[i-lGoBack], re.M|re.I)
+								if matchObj:
+									numLines= giveLineNum(val5,val2[i-lGoBack])
+									z =stupidPreJ(val5, numLines)
+									if z == True:
+										addListMovDerefECX(saveq, numLines, NumOpsDis, modName)
 
-									matchObj = re.match( r'^mov dword ptr \[[e]*d[x|l]+\], [e]*[acspb]+[x|i|p]+|^mov dword ptr \[[e]*d[x|l]+\], [e]*[acspb]+[x|i|p]+', val2[i-lGoBack], re.M|re.I)
-									if matchObj:
-										numLines= giveLineNum(val5,val2[i-lGoBack])
-										z =stupidPreJ(val5, numLines)
-										if z == True:
-											addListMovDerefEDX(saveq, numLines, NumOpsDis, modName)
-									matchObj = re.match( r'^mov dword ptr \[[e]*di+\], [e]*[acdspb]+[x|p]+ |^mov dword ptr \[[e]*di+\], esi|^mov \[[e]*di+\], [e]*[acdspb]+[x|p]+ |^mov \[[e]*di+\], esi', val2[i-lGoBack], re.M|re.I)
-									if matchObj:
-										numLines= giveLineNum(val5,val2[i-lGoBack])
-										z =stupidPreJ(val5, numLines)
-										if z == True:
-											addListMovDerefEDI(saveq, numLines, NumOpsDis, modName)
+								matchObj = re.match( r'^mov dword ptr \[[e]*d[x|l]+.*\], [e]*[abcdsb]+|^mov dword ptr \[[e]*d[x|l]+.*\], [dword|word|byte]* ptr \[[e]*[abcdsb]+', val2[i-lGoBack], re.M|re.I)
+								if matchObj:
+									numLines= giveLineNum(val5,val2[i-lGoBack])
+									z =stupidPreJ(val5, numLines)
+									if z == True:
+										addListMovDerefEDX(saveq, numLines, NumOpsDis, modName)
+								matchObj = re.match( r'^mov dword ptr \[[e]*di.*\], [e]*[abcdsb]+|^mov dword ptr \[[e]*di.*\], [dword|word|byte]* ptr \[[e]*[abcdsb]+', val2[i-lGoBack], re.M|re.I)
+								if matchObj:
+									numLines= giveLineNum(val5,val2[i-lGoBack])
+									z =stupidPreJ(val5, numLines)
+									if z == True:
+										addListMovDerefEDI(saveq, numLines, NumOpsDis, modName)
 
-									matchObj = re.match( r'^mov dword ptr \[[e]*si+\], [e]*[acsspb]+[x|p]+ |^mov dword ptr \[[e]*si+\], edi|^mov \[[e]*si+\], [e]*[acsspb]+[x|p]+ |^mov \[[e]*si+\], edi', val2[i-lGoBack], re.M|re.I)
-									if matchObj:		
-										numLines= giveLineNum(val5,val2[i-lGoBack])
-										z =stupidPreJ(val5, numLines)
-										if z == True:
-											addListMovDerefESI(saveq, numLines, NumOpsDis, modName)
-									matchObj = re.match( r'^mov dword ptr \[[e]*bp+\], [e]*[acsp]+[x|p|i]+ |^mov dword ptr \[[e]*bp+\], edi|^mov \[[e]*bp+\], [e]*[acsp]+[x|p|i]+ |^mov \[[e]*bp+\], edi', val2[i-lGoBack], re.M|re.I)
-									if matchObj:
-										numLines= giveLineNum(val5,val2[i-lGoBack])
-										z =stupidPreJ(val5, numLines)
-										if z == True:
-											addListMovDerefEBP(saveq, numLines, NumOpsDis, modName)
-									matchObj = re.match( r'^mov dword ptr \[[e]*sp+\], [e]*[acbp]+[x|p|i]+ |^mov dword ptr \[[e]*sp+\], esi|^mov \[[e]*sp+\], [e]*[acbp]+[x|p|i]+ |^mov \[[e]*sp+\], esi', val2[i-lGoBack], re.M|re.I)
-									if matchObj:
-										numLines= giveLineNum(val5,val2[i-lGoBack])
-										z =stupidPreJ(val5, numLines)
-										if z == True:
-											addListMovDerefESP(saveq, numLines, NumOpsDis, modName)
+								matchObj = re.match( r'^mov dword ptr \[[e]*si.*\], [e]*[abcdsb]+|^mov dword ptr \[[e]*si.*\], [dword|word|byte]* ptr \[[e]*[abcdsb]+', val2[i-lGoBack], re.M|re.I)
+								if matchObj:		
+									numLines= giveLineNum(val5,val2[i-lGoBack])
+									z =stupidPreJ(val5, numLines)
+									if z == True:
+										addListMovDerefESI(saveq, numLines, NumOpsDis, modName)
+								matchObj = re.match( r'^mov dword ptr \[[e]*bp.*\], [e]*[abcdsb]+|^mov dword ptr \[[e]*bp.*\], [dword|word|byte]* ptr \[[e]*[abcdsb]+', val2[i-lGoBack], re.M|re.I)
+								if matchObj:
+									numLines= giveLineNum(val5,val2[i-lGoBack])
+									z =stupidPreJ(val5, numLines)
+									if z == True:
+										addListMovDerefEBP(saveq, numLines, NumOpsDis, modName)
+								matchObj = re.match( r'^mov dword ptr \[[e]*sp.*\], [e]*[abcdsb]+|^mov dword ptr \[[e]*sp.*\], [dword|word|byte]* ptr \[[e]*[abcdsb]+', val2[i-lGoBack], re.M|re.I)
+								if matchObj:
+									numLines= giveLineNum(val5,val2[i-lGoBack])
+									z =stupidPreJ(val5, numLines)
+									if z == True:
+										addListMovDerefESP(saveq, numLines, NumOpsDis, modName)
 
 							except:
 								pass
@@ -6228,7 +6907,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 							#searching for Shift Left
 							#not common, so no need to do by specific regs
 							try: 
-								matchObj = re.match( r'^s[a|h]l+[dwl]* [dword|byte]+ [ptr]* \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+|^salc ', val2[i-lGoBack], re.M|re.I)
+								matchObj = re.match( r'^s[a|h]l+[dwl]* [dword|byte|word]+ [ptr]* \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+|^salc ', val2[i-lGoBack], re.M|re.I)
 								if not matchObj:
 									matchObj = re.match( r'^shl|^sal', val2[i-lGoBack], re.M|re.I)
 									if matchObj:
@@ -6242,7 +6921,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 								#Shift Right
 								#not common, so no need to do by specific regs
 							try: 
-								matchObj = re.match( r'^s[a|h]+r[dwl]* [dword|byte]+ [ptr]* \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+|^salc ', val2[i-lGoBack], re.M|re.I)
+								matchObj = re.match( r'^s[a|h]+r[dwl]* [dword|byte|word]+ [ptr]* \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+|^salc ', val2[i-lGoBack], re.M|re.I)
 								if not matchObj:	
 									matchObj = re.match( r'^shr|^sar', val2[i-lGoBack], re.M|re.I)
 									if matchObj:
@@ -6256,7 +6935,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 								#Rotate Left 
 								#not common, so no need to do by specific regs
 							try: 
-								matchObj = re.match( r'^r[o|c]+l [dword|byte]+ [ptr]* \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ ', val2[i-lGoBack], re.M|re.I)
+								matchObj = re.match( r'^r[o|c]+l [dword|byte|word]+ [ptr]* \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ ', val2[i-lGoBack], re.M|re.I)
 								if not matchObj:
 									matchObj = re.match( r'^rol|^rcl', val2[i-lGoBack], re.M|re.I)
 									if matchObj:
@@ -6270,7 +6949,7 @@ def disHereJmp(address, NumOpsDis, Reg):
 								#Rotate Right
 								#not common, so no need to do by specific regs
 							try: 
-								matchObj = re.match( r'^r[o|c]+r [dword|byte]+ [ptr]* \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ ', val2[i-lGoBack], re.M|re.I)
+								matchObj = re.match( r'^r[o|c]+r [dword|byte|word]+ [ptr]* \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ ', val2[i-lGoBack], re.M|re.I)
 								if not matchObj:	
 									matchObj = re.match( r'^ror|^rcr', val2[i-lGoBack], re.M|re.I)
 									if matchObj:
@@ -6285,11 +6964,11 @@ def disHereJmp(address, NumOpsDis, Reg):
 							lGoBack -= 1
 
 						
-def disHereCall(address, NumOpsDis):
+def disHereCall(address, NumOpsDis, Reg, newReg = "default"):
 	global modName
 	global o
 	w=0
-
+	global linesGoBackFindOP
 	## Capstone does not seem to allow me to start disassemblying at a given point, so I copy out a chunk to  disassemble. I append a 0x00 because it does not always disassemble correctly (or at all) if just two bytes. I cause it not to be displayed through other means. It simply take the starting address of the jmp [reg], disassembles backwards, and copies it to a variable that I examine more closely.
 
 	lGoBack = linesGoBackFindOP
@@ -6400,28 +7079,35 @@ def disHereCall(address, NumOpsDis):
 							counter()
 						else:
 							save = int(save, 16)
-							addListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: address of target jmp [reg]; second parameter: number of lines to go back. third parameter: number of ops to go back.
+							if(newReg == "default"):
+								addListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: address of target jmp [reg]; second parameter: number of lines to go back. third parameter: number of ops to go back.
+							else:
+								addListBaseNewCall(save, val2.__len__(), NumOpsDis, modName, newReg)
 		
 					else:
 						matchObj = re.match( r'\bnop\b|\bleave\b|\bcall\b|\bret\b|\bjmp\b|\bljmp\b|\bjo\b|\bjno\b|\bjsn\b|\bjs\b|\bje\b|\bjz\b|\bjne\b|\bjnz\b|\bjb\b|\bjnae\b|\bjc\b|\bjnb\bjae\b|\bjnc\b|\bjbe\bjna\b|\bja\b|\bjnben\b|\bjl\b|\bjnge\b|\bjge\bjnl\b|\bjle\b|\bjng\bjg\b|\bjnle\b|\bjp\b|\bjpe\b|\bjnp\b|\bjpo\bjczz\b|\bjecxz\b|\bcall\b|\bint\b|\bdb\b|\bretf\b|\bhltf\b|\bret\b', val2[i-2], re.M|re.I)
 						if not matchObj:
 							try:
 								save = int(save, 16)
-								addListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: address of target jmp [reg]; second parameter: number of lines to go back. third parameter: number of ops to go back.
-								# print "save addlist " + str(save) 
+								if(newReg == "default"):
+									addListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: address of target jmp [reg]; second parameter: number of lines to go back. third parameter: number of ops to go back.
+								else:
+									addListBaseNewCall(save, val2.__len__(), NumOpsDis, modName, newReg)
 
 							except:
 								# print "weird one1 "	+ str(save)
 
 								save = int(save)
-								addListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: 
-								# print "weird one2 "	+ str(save)
+								if(newReg == "default"):
+									addListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: address of target jmp [reg]; second parameter: number of lines to go back. third parameter: number of ops to go back.
+								else:
+									addListBaseNewCall(save, val2.__len__(), NumOpsDis, modName, newReg)
 							while lGoBack > 1:
 								try:
 									matchObj = re.match( r'\badd\b|\badc\b', val2[i-lGoBack], re.M|re.I)
 									if matchObj: 
-										matchObj = re.match( r'^[add|adc]+ [byte|dword]+ ptr+ \[e[abcds]+[px]+ [+|-]+ 0x|^add [byte|dword]+ ptr+ \[e[abcds][px] \+ 0x|^add e[abcds][px], [dword|byte]+ ptr \[e[abcds][xp] \+ 0x|^add [byte|dword]+ ptr \[eax\], [al|eax]|^add [byte|dword]+ ptr \[ebx\], [bl|bx]|^add [byte|dword]+ ptr \[ecx\], [cl|ecx]|^add [byte|dword]+ ptr \[edx\], [dl|edx]|^[add|adc]+ eax, [dword|byte]+ ptr \[[e|a]+[a|l]+|^[add|adc]+ ebx, [dword|byte]+ ptr \[[e|b]+[b|l]+|^[add|adc]+ ecx, [dword|byte]+ ptr \[[e|c]+[c|l]+|^[add|adc]+ edx, [dword|byte]+ ptr \[[e|d]+[d|l]+|^[add|adc]+ edi, [dword|byte]+ ptr \[[e|d]+[d|i]+|^[add|adc]+ esi, [dword|byte]+ ptr \[[e|s]+[s|i]+|^[add|adc]+ ebp, [dword|byte]+ ptr \[[e|b]+[b|p]+|^[add|adc]+ esp, [dword|byte]+ ptr \[[e|s]+[s|p]+|^[add|adc]+ a[l|h]+, a[l|h]+|^[add|adc]+ b[l|h]+, b[l|h]+|^[add|adc]+ c[l|h]+, c[l|h]+|^[add|adc]+ d[l|h]+, d[l|h]+|^[add|adc]+ di, di|^[add|adc]+ si, si|^[add|adc]+ sp, sp|^[add|adc]+ bp, bp', val2[i-lGoBack], re.M|re.I)   
-										# I am using regular expressions to eliminate what would be garbage gadgets, of which there would be countless, off the wall, unintended instructions that would do nothing of any practical value.
+										# matchObj = re.match( r'^[add|adc]+ [byte|dword]+ ptr+ \[e[abcds]+[px]+ [+|-]+ 0x|^add [byte|dword]+ ptr+ \[e[abcds][px] \+ 0x|^add e[abcds][px], [dword|byte|word]+ ptr \[e[abcds][xp] \+ 0x|^add [byte|dword]+ ptr \[eax\], [al|eax]|^add [byte|dword]+ ptr \[ebx\], [bl|bx]|^add [byte|dword]+ ptr \[ecx\], [cl|ecx]|^add [byte|dword]+ ptr \[edx\], [dl|edx]|^[add|adc]+ eax, [dword|byte|word]+ ptr \[[e|a]+[a|l]+|^[add|adc]+ ebx, [dword|byte|word]+ ptr \[[e|b]+[b|l]+|^[add|adc]+ ecx, [dword|byte|word]+ ptr \[[e|c]+[c|l]+|^[add|adc]+ edx, [dword|byte|word]+ ptr \[[e|d]+[d|l]+|^[add|adc]+ edi, [dword|byte|word]+ ptr \[[e|d]+[d|i]+|^[add|adc]+ esi, [dword|byte|word]+ ptr \[[e|s]+[s|i]+|^[add|adc]+ ebp, [dword|byte|word]+ ptr \[[e|b]+[b|p]+|^[add|adc]+ esp, [dword|byte|word]+ ptr \[[e|s]+[s|p]+|^[add|adc]+ a[l|h]+, a[l|h]+|^[add|adc]+ b[l|h]+, b[l|h]+|^[add|adc]+ c[l|h]+, c[l|h]+|^[add|adc]+ d[l|h]+, d[l|h]+|^[add|adc]+ di, di|^[add|adc]+ si, si|^[add|adc]+ sp, sp|^[add|adc]+ bp, bp', val2[i-lGoBack], re.M|re.I)   )
+										matchObj = re.match( r'yoskipthis', val2[i-lGoBack], re.M|re.I)   
 										if not matchObj:
 											y = val2[i-lGoBack]
 											if (y == val2[i-lGoBack]):
@@ -6432,7 +7118,7 @@ def disHereCall(address, NumOpsDis):
 
 											#print "ADDDING************************************\n\n"
 											#eax - saving add to specific registers -- far more useful.
-											matchObj1 = re.match( r'^[add|adc]+ [dword|byte]* [ptr]* [\[]*[e]*a[x|l|h]+|[add|adc]+ [e]*a[x|l|h]+ ', val2[i-lGoBack], re.M|re.I)
+											matchObj1 = re.match( r'^[add|adc]+ [dword|byte|word]* [ptr]* [\[]*[e]*a[x|l|h]+|[add|adc]+ [e]*a[x|l|h]+ ', val2[i-lGoBack], re.M|re.I)
 											if matchObj1:
 												# print "***************"
 												# print "b: " + val2[i-lGoBack]
@@ -6480,7 +7166,7 @@ def disHereCall(address, NumOpsDis):
 											#	print "ADDDING************************************\n\n"
 											
 											#ebx
-											matchObj1 = re.match( r'^[add|adc]+ [dword|byte]* [ptr]* [\[]*[e]*b[x|l|h]+|[add|adc]+ [e]*b[x|l|h]+', val2[i-lGoBack], re.M|re.I)
+											matchObj1 = re.match( r'^[add|adc]+ [dword|byte|word]* [ptr]* [\[]*[e]*b[x|l|h]+|[add|adc]+ [e]*b[x|l|h]+', val2[i-lGoBack], re.M|re.I)
 
 											
 											if matchObj1:
@@ -6527,7 +7213,7 @@ def disHereCall(address, NumOpsDis):
 
 												# addListBaseAddEBX(save, lGoBack, NumOpsDis, modName)
 											#ecx
-											matchObj = re.match( r'^[add|adc]+ [dword|byte]* [ptr]* [\[]*[e]*c[x|l|h]+|[add|adc]+ [e]*c[x|l|h]+', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^[add|adc]+ [dword|byte|word]* [ptr]* [\[]*[e]*c[x|l|h]+|[add|adc]+ [e]*c[x|l|h]+', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6537,7 +7223,7 @@ def disHereCall(address, NumOpsDis):
 
 												# addListBaseAddECX(save, lGoBack, NumOpsDis, modName)
 											#eDx
-											matchObj = re.match( r'^[add|adc]+ [dword|byte]* [ptr]* [\[]*[e]*d[x|l|h]+|[add|adc]+ [e]*d[x|l|h]+', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^[add|adc]+ [dword|byte|word]* [ptr]* [\[]*[e]*d[x|l|h]+|[add|adc]+ [e]*d[x|l|h]+', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6547,7 +7233,7 @@ def disHereCall(address, NumOpsDis):
 
 												# addListBaseAddEDX(save, lGoBack, NumOpsDis, modName)
 											#ESI 
-											matchObj = re.match( r'^[add|adc]+ [dword|byte]* [ptr]* [\[]*[e]*si|[add|adc]+ [e]*si', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^[add|adc]+ [dword|byte|word]* [ptr]* [\[]*[e]*si|[add|adc]+ [e]*si', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 
 												numLines= giveLineNum(val5,val2[i-lGoBack])
@@ -6557,7 +7243,7 @@ def disHereCall(address, NumOpsDis):
 													addListBaseAddESI(saveq, numLines, NumOpsDis, modName)
 												# addListBaseAddESI(save, lGoBack, NumOpsDis, modName)
 											#EDI 
-											matchObj = re.match( r'^[add|adc]+ [dword|byte]* [ptr]* [\[]*[e]*di|[add|adc]+ [e]*di', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^[add|adc]+ [dword|byte|word]* [ptr]* [\[]*[e]*di|[add|adc]+ [e]*di', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 
 												numLines= giveLineNum(val5,val2[i-lGoBack])
@@ -6567,7 +7253,7 @@ def disHereCall(address, NumOpsDis):
 													addListBaseAddEDI(saveq, numLines, NumOpsDis, modName)
 												# addListBaseAddEDI(save, lGoBack, NumOpsDis, modName)
 											#esp
-											matchObj = re.match( r'^[add|adc]+ [dword|byte]* [ptr]* [\[]*[e]*sp|[add|adc]+ [e]*sp', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^[add|adc]+ [dword|byte|word]* [ptr]* [\[]*[e]*sp|[add|adc]+ [e]*sp', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6577,7 +7263,7 @@ def disHereCall(address, NumOpsDis):
 
 												# addListBaseAddESP(save, lGoBack, NumOpsDis, modName)
 											#EBP
-											matchObj = re.match( r'^[add|adc]+ [dword|byte]* [ptr]* [\[]*[e]*bp|[add|adc]+ [e]*bp', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^[add|adc]+ [dword|byte|word]* [ptr]* [\[]*[e]*bp|[add|adc]+ [e]*bp', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6595,7 +7281,8 @@ def disHereCall(address, NumOpsDis):
 									if matchObj: 
 										#print "**sub**"
 										#print val2[i-lGoBack]
-										matchObj = re.match( r'^[sub|sbb]+ [byte|dword]+ ptr+ \[e[abcds]+[px]+ [+|-]+ 0x|^[sub|sbb]+ [byte|dword]+ ptr+ \[e[abcds][px] \+ 0x|^[sub|sbb]+ e[abcds][px], [dword|byte]+ ptr \[e[abcds][xp] \+ 0x|^[sub|sbb]+ [byte|dword]+ ptr \[eax\], [al|eax]+|^[sub|sbb]+ [byte|dword]+ ptr \[ebx\], [bl|bx]+|^[sub|sbb]+ [byte|dword]+ ptr \[ecx\], [cl|ecx]+|^[sub|sbb]+ [byte|dword]+ ptr \[edx\], [dl|edx]+|^[sub|sbb]+ eax, [dword|byte]+ ptr \[[e|a]+[a|l]+|^[sub|sbb]+ ebx, [dword|byte]+ ptr \[[e|b]+[b|l]+|^[sub|sbb]+ ecx, [dword|byte]+ ptr \[[e|c]+[c|l]+|^[sub|sbb]+ edx, [dword|byte]+ ptr \[[e|d]+[d|l]+|^[sub|sbb]+ edi, [dword|byte]+ ptr \[[e|d]+[d|i]+|^[sub|sbb]+ esi, [dword|byte]+ ptr \[[e|s]+[s|i]+|^[sub|sbb]+ ebp, [dword|byte]+ ptr \[[e|b]+[b|p]+|^[sub|sbb]+ esp, [dword|byte]+ ptr \[[e|s]+[s|p]+|^[sub|sbb]+ a[l|h]+, a[l|h]+|^[sub|sbb]+ b[l|h]+, b[l|h]+|^[sub|sbb]+ c[l|h]+, c[l|h]+|^[sub|sbb]+ d[l|h]+, d[l|h]+|^[sub|sbb]+ di, di|^[sub|sbb]+ si, si|^[sub|sbb]+ sp, sp|^[sub|sbb]+ bp, bp', val2[i-lGoBack], re.M|re.I)  
+										# matchObj = re.match( r'^[sub|sbb]+ [byte|dword]+ ptr+ \[e[abcds]+[px]+ [+|-]+ 0x|^[sub|sbb]+ [byte|dword]+ ptr+ \[e[abcds][px] \+ 0x|^[sub|sbb]+ e[abcds][px], [dword|byte|word]+ ptr \[e[abcds][xp] \+ 0x|^[sub|sbb]+ [byte|dword]+ ptr \[eax\], [al|eax]+|^[sub|sbb]+ [byte|dword]+ ptr \[ebx\], [bl|bx]+|^[sub|sbb]+ [byte|dword]+ ptr \[ecx\], [cl|ecx]+|^[sub|sbb]+ [byte|dword]+ ptr \[edx\], [dl|edx]+|^[sub|sbb]+ eax, [dword|byte|word]+ ptr \[[e|a]+[a|l]+|^[sub|sbb]+ ebx, [dword|byte|word]+ ptr \[[e|b]+[b|l]+|^[sub|sbb]+ ecx, [dword|byte|word]+ ptr \[[e|c]+[c|l]+|^[sub|sbb]+ edx, [dword|byte|word]+ ptr \[[e|d]+[d|l]+|^[sub|sbb]+ edi, [dword|byte|word]+ ptr \[[e|d]+[d|i]+|^[sub|sbb]+ esi, [dword|byte|word]+ ptr \[[e|s]+[s|i]+|^[sub|sbb]+ ebp, [dword|byte|word]+ ptr \[[e|b]+[b|p]+|^[sub|sbb]+ esp, [dword|byte|word]+ ptr \[[e|s]+[s|p]+|^[sub|sbb]+ a[l|h]+, a[l|h]+|^[sub|sbb]+ b[l|h]+, b[l|h]+|^[sub|sbb]+ c[l|h]+, c[l|h]+|^[sub|sbb]+ d[l|h]+, d[l|h]+|^[sub|sbb]+ di, di|^[sub|sbb]+ si, si|^[sub|sbb]+ sp, sp|^[sub|sbb]+ bp, bp', val2[i-lGoBack], re.M|re.I)  
+										matchObj = re.match( r'yoskipthis', val2[i-lGoBack], re.M|re.I)  
 										if not matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -6603,7 +7290,7 @@ def disHereCall(address, NumOpsDis):
 												addListBaseSub(saveq, numLines, NumOpsDis, modName)
 											# addListBaseSub(save, lGoBack, NumOpsDis, modName) 
 											#eax - saving add to specific registers -- far more useful.
-											matchObj = re.match( r'^[sub|sbb]+ [dword|byte]* [ptr]* [\[]*[e]*a[x|l|h]*|[sub|sbb]+ [e]*a[x|l|h]', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^[sub|sbb]+ [dword|byte|word]* [ptr]* [\[]*[e]*a[x|l|h]*|[sub|sbb]+ [e]*a[x|l|h]', val2[i-lGoBack], re.M|re.I)
 											if matchObj:										
 												numLines= giveLineNum(val5,val2[i-lGoBack])				
 												z =stupidPreJ(val5, numLines)
@@ -6612,7 +7299,7 @@ def disHereCall(address, NumOpsDis):
 												# addListBaseSubEAX(save, lGoBack, NumOpsDis, modName)
 											
 											#ebx
-											matchObj = re.match( r'^[sub|sbb]+ [dword|byte]* [ptr]* [\[]*[e]*b[x|l|h]*|[sub|sbb]+ [e]*b[x|l|h]*', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^[sub|sbb]+ [dword|byte|word]* [ptr]* [\[]*[e]*b[x|l|h]*|[sub|sbb]+ [e]*b[x|l|h]*', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6620,7 +7307,7 @@ def disHereCall(address, NumOpsDis):
 													addListBaseSubEBX(saveq, numLines, NumOpsDis, modName)
 												# addListBaseSubEBX(save, lGoBack, NumOpsDis, modName)
 											#ecx
-											matchObj = re.match( r'^[sub|sbb]+ [dword|byte]* [ptr]* [\[]*[e]*c[x|l|h]*|[sub|sbb]+ [e]*c[x|l|h]*', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^[sub|sbb]+ [dword|byte|word]* [ptr]* [\[]*[e]*c[x|l|h]*|[sub|sbb]+ [e]*c[x|l|h]*', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6628,7 +7315,7 @@ def disHereCall(address, NumOpsDis):
 													addListBaseSubECX(saveq, numLines, NumOpsDis, modName)
 												# addListBaseSubECX(save, lGoBack, NumOpsDis, modName)
 											#eDx
-											matchObj = re.match( r'^[sub|sbb]+ [dword|byte]* [ptr]* [\[]*[e]*d[x|l|h]*|[sub|sbb]+ [e]*d[x|l|h]*', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^[sub|sbb]+ [dword|byte|word]* [ptr]* [\[]*[e]*d[x|l|h]*|[sub|sbb]+ [e]*d[x|l|h]*', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6636,7 +7323,7 @@ def disHereCall(address, NumOpsDis):
 													addListBaseSubEDX(saveq, numLines, NumOpsDis, modName)
 												# addListBaseSubEDX(save, lGoBack, NumOpsDis, modName)
 											#ESI 
-											matchObj = re.match( r'^[sub|sbb]+ [dword|byte]* [ptr]* [\[]*[e]*si|[sub|sbb]+ [e]*si', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^[sub|sbb]+ [dword|byte|word]* [ptr]* [\[]*[e]*si|[sub|sbb]+ [e]*si', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6644,7 +7331,7 @@ def disHereCall(address, NumOpsDis):
 													addListBaseSubESI(saveq, numLines, NumOpsDis, modName)
 												# addListBaseSubESI(save, lGoBack, NumOpsDis, modName)
 											#EDI 
-											matchObj = re.match( r'^[sub|sbb]+ [dword|byte]* [ptr]* [\[]*[e]*di|[sub|sbb]+ [e]*di', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^[sub|sbb]+ [dword|byte|word]* [ptr]* [\[]*[e]*di|[sub|sbb]+ [e]*di', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6652,7 +7339,7 @@ def disHereCall(address, NumOpsDis):
 													addListBaseSubEDI(saveq, numLines, NumOpsDis, modName)
 												# addListBaseSubEDI(save, lGoBack, NumOpsDis, modName)
 											#esp
-											matchObj = re.match( r'^[sub|sbb]+ [dword|byte]* [ptr]* [\[]*[e]*sp|[sub|sbb]+ [e]*sp', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^[sub|sbb]+ [dword|byte|word]* [ptr]* [\[]*[e]*sp|[sub|sbb]+ [e]*sp', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6660,7 +7347,7 @@ def disHereCall(address, NumOpsDis):
 													addListBaseSubESP(saveq, numLines, NumOpsDis, modName)
 												# addListBaseSubESP(save, lGoBack, NumOpsDis, modName)
 											#EBP
-											matchObj = re.match( r'^[sub|sbb]+ [dword|byte]* [ptr]* [\[]*[e]*bp|[sub|sbb]+ [e]*bp', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^[sub|sbb]+ [dword|byte|word]* [ptr]* [\[]*[e]*bp|[sub|sbb]+ [e]*bp', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6714,7 +7401,7 @@ def disHereCall(address, NumOpsDis):
 													# addListBaseMulEAX(save, lGoBack, NumOpsDis, modName)
 													# addListBaseMulEDX(save, lGoBack, NumOpsDis, modName)
 
-											matchObj = re.match( r'^imul[b|w|l]* [e]*ax, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*ax, [dword|byte]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^imul[b|w|l]* [e]*ax, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*ax, [dword|byte|word]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 
 												numLines= giveLineNum(val5,val2[i-lGoBack])
@@ -6737,7 +7424,7 @@ def disHereCall(address, NumOpsDis):
 													# addListBaseMulEAX(save, lGoBack, NumOpsDis, modName)
 
 											#ebx
-											matchObj = re.match( r'^imul[b|w|l]* [e]*bx, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*bx, [dword|byte]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^imul[b|w|l]* [e]*bx, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*bx, [dword|byte|word]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6758,7 +7445,7 @@ def disHereCall(address, NumOpsDis):
 														addListBaseMulEBX(saveq, numLines, NumOpsDis, modName)
 													# addListBaseMulEBX(save, lGoBack, NumOpsDis, modName)
 											#ecx
-											matchObj = re.match( r'^imul[b|w|l]* [e]*cx, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*cx, [dword|byte]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^imul[b|w|l]* [e]*cx, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*cx, [dword|byte|word]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6779,7 +7466,7 @@ def disHereCall(address, NumOpsDis):
 														addListBaseMulECX(saveq, numLines, NumOpsDis, modName)
 													# addListBaseMulECX(save, lGoBack, NumOpsDis, modName)
 											#eDx
-											matchObj = re.match( r'^imul[b|w|l]* [e]*dx, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*dx, [dword|byte]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^imul[b|w|l]* [e]*dx, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*dx, [dword|byte|word]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6802,7 +7489,7 @@ def disHereCall(address, NumOpsDis):
 														# addListBaseMulEDX(save, lGoBack, NumOpsDis, modName)
 
 											#ESI 
-											matchObj = re.match( r'^imul[b|w|l]* [e]*si, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*si, [dword|byte]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^imul[b|w|l]* [e]*si, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*si, [dword|byte|word]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6824,7 +7511,7 @@ def disHereCall(address, NumOpsDis):
 														# addListBaseMulESI(save, lGoBack, NumOpsDis, modName)
 
 											#EDI 
-											matchObj = re.match( r'^imul[b|w|l]* [e]*di, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*di, [dword|byte]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^imul[b|w|l]* [e]*di, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*di, [dword|byte|word]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6846,7 +7533,7 @@ def disHereCall(address, NumOpsDis):
 														# addListBaseMulEDI(save, lGoBack, NumOpsDis, modName)
 											
 											#esp
-											matchObj = re.match( r'^imul[b|w|l]* [e]*sp, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*sp, [dword|byte]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^imul[b|w|l]* [e]*sp, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*sp, [dword|byte|word]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												#addListBaseMulESP(save, lGoBack, NumOpsDis, modName)
 												pass
@@ -6859,7 +7546,7 @@ def disHereCall(address, NumOpsDis):
 													#addListBaseMulESP(save, lGoBack, NumOpsDis, modName)
 													pass
 											#EBP
-											matchObj = re.match( r'^imul[b|w|l]* [e]*bp, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*bp, [dword|byte]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^imul[b|w|l]* [e]*bp, [e]*[abcdsp]+[xbpi]+, |^imul[b|w|l]* [e]*bp, [dword|byte|word]+ ptr \[[e]*[abcdsp]+[xbpi]+\], ', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6907,7 +7594,7 @@ def disHereCall(address, NumOpsDis):
 									matchObj = re.match( r'\bmov\b', val2[i-lGoBack], re.M|re.I)
 								
 									if matchObj: 
-										matchObj = re.match( r'^mov [e]*a[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h]|^mov [e]*b[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*b[x|l|h]*|^mov [e]*c[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*c[x|l|h]*|^mov [e]*d[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*d[x|l|h]*|^mov [e]*di, [dword|byte]+ [ptr]* \[[e]*di|^mov [e]*si, [dword|byte]+ [ptr]* \[[e]*si|^mov [e]*sp, [dword|byte]+ [ptr]* \[[e]*sp|^mov [e]*bp, [dword|byte]+ [ptr]* \[[e]*bp|mov [e]*a[x|l|h]+, [e]*a[x|l|h]+|mov [e]*b[x|l|h]+, [e]*b[x|l|h]+|mov [e]*c[x|l|h]+, [e]*c[x|l|h]+|mov [e]*d[x|l|h]+, [e]*d[x|l|h]+|mov [e]*di, [e]*di|mov [e]*si, [e]*si|mov [e]*bp, [e]*bp+|mov [e]*sp, [e]*sp|^mov [e]*a[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h] [+|-]+|^mov [dword|byte]+ ptr \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ |^mov [e]*[abcdspb]+[x|l|h|i|p]+, [dword|byte]+ ptr \[0x|^mov [e]*a[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h]+ [+|-]+|^mov [e]*[abcdspb]+[x|l|h|i|p]+, es|^mov [e]*[abcdsb]+[x|l|h|p|i]+, [dword|byte]+ [ptr]* \[[e]*[abcdsb]+[x|l|h|p|i]+ [-|+]+ 0x[0-9]*', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^mov [e]*a[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h]|^mov [e]*b[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*b[x|l|h]*|^mov [e]*c[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*c[x|l|h]*|^mov [e]*d[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*d[x|l|h]*|^mov [e]*di, [dword|byte|word]+ [ptr]* \[[e]*di|^mov [e]*si, [dword|byte|word]+ [ptr]* \[[e]*si|^mov [e]*sp, [dword|byte|word]+ [ptr]* \[[e]*sp|^mov [e]*bp, [dword|byte|word]+ [ptr]* \[[e]*bp|mov [e]*a[x|l|h]+, [e]*a[x|l|h]+|mov [e]*b[x|l|h]+, [e]*b[x|l|h]+|mov [e]*c[x|l|h]+, [e]*c[x|l|h]+|mov [e]*d[x|l|h]+, [e]*d[x|l|h]+|mov [e]*di, [e]*di|mov [e]*si, [e]*si|mov [e]*bp, [e]*bp+|mov [e]*sp, [e]*sp|^mov [e]*a[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h] [+|-]+|^mov [dword|byte|word]+ ptr \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ |^mov [e]*[abcdspb]+[x|l|h|i|p]+, [dword|byte|word]+ ptr \[0x|^mov [e]*a[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h]+ [+|-]+|^mov [e]*[abcdspb]+[x|l|h|i|p]+, es|^mov [e]*[abcdsb]+[x|l|h|p|i]+, [dword|byte|word]+ [ptr]* \[[e]*[abcdsb]+[x|l|h|p|i]+ [-|+]+ 0x[0-9]*', val2[i-lGoBack], re.M|re.I)
 										if not matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -6917,7 +7604,7 @@ def disHereCall(address, NumOpsDis):
 											# addListBaseMov(save, lGoBack, NumOpsDis, modName) 
 											#eax - saving add to specific registers -- far more useful.
 																					
-											matchObj = re.match( r'^mov [e]*a[x|l|h]+|^mov [dword|byte]+ ptr \[[e]*a[x|l|h]+', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^mov [e]*a[x|l|h]+|^mov [dword|byte|word]+ ptr \[[e]*a[x|l|h]+', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6926,7 +7613,7 @@ def disHereCall(address, NumOpsDis):
 													addListBaseMovEAX(saveq, numLines, NumOpsDis, modName)
 												# addListBaseMovEAX(save, lGoBack, NumOpsDis, modName)
 											#ebx
-											matchObj = re.match( r'^mov [e]*b[x|l|h]+|^mov [dword|byte]+ ptr \[[e]*b[x|l|h]+', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^mov [e]*b[x|l|h]+|^mov [dword|byte|word]+ ptr \[[e]*b[x|l|h]+', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6935,7 +7622,7 @@ def disHereCall(address, NumOpsDis):
 													addListBaseMovEBX(saveq, numLines, NumOpsDis, modName)
 												# addListBaseMovEBX(save, lGoBack, NumOpsDis, modName)
 											#ecx
-											matchObj = re.match( r'^mov [e]*c[x|l|h]+|^mov [dword|byte]+ ptr \[[e]*c[x|l|h]+', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^mov [e]*c[x|l|h]+|^mov [dword|byte|word]+ ptr \[[e]*c[x|l|h]+', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6945,7 +7632,7 @@ def disHereCall(address, NumOpsDis):
 												# addListBaseMovECX(save, lGoBack, NumOpsDis, modName)
 												
 											#eDx
-											matchObj = re.match( r'^mov [e]*d[x|l|h]+|^mov [dword|byte]+ ptr \[[e]*d[x|l|h]+', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^mov [e]*d[x|l|h]+|^mov [dword|byte|word]+ ptr \[[e]*d[x|l|h]+', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6955,7 +7642,7 @@ def disHereCall(address, NumOpsDis):
 												# addListBaseMovEDX(save, lGoBack, NumOpsDis, modName)
 
 											#ESI 
-											matchObj = re.match( r'^mov [e]*si|^mov [dword|byte]+ ptr \[[e]*si', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^mov [e]*si|^mov [dword|byte|word]+ ptr \[[e]*si', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6964,7 +7651,7 @@ def disHereCall(address, NumOpsDis):
 													addListBaseMovESI(saveq, numLines, NumOpsDis, modName)
 												# addListBaseMovESI(save, lGoBack, NumOpsDis, modName)
 											#EDI 
-											matchObj = re.match( r'^mov [e]*di|^mov [dword|byte]+ ptr \[[e]*di', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^mov [e]*di|^mov [dword|byte|word]+ ptr \[[e]*di', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6973,7 +7660,7 @@ def disHereCall(address, NumOpsDis):
 													addListBaseMovEDI(saveq, numLines, NumOpsDis, modName)
 												# addListBaseMovEDI(save, lGoBack, NumOpsDis, modName)
 											#esp
-											matchObj = re.match( r'^mov [e]*sp|^mov [dword|byte]+ ptr \[[e]*sp', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^mov [e]*sp|^mov [dword|byte|word]+ ptr \[[e]*sp', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6982,7 +7669,7 @@ def disHereCall(address, NumOpsDis):
 													addListBaseMovESP(saveq, numLines, NumOpsDis, modName)
 												# addListBaseMovESP(save, lGoBack, NumOpsDis, modName)
 											#EBP
-											matchObj = re.match( r'^mov [e]*bp|^mov [dword|byte]+ ptr \[[e]*bp', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^mov [e]*bp|^mov [dword|byte|word]+ ptr \[[e]*bp', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -6998,7 +7685,7 @@ def disHereCall(address, NumOpsDis):
 									matchObj = re.match( r'\blea\b', val2[i-lGoBack], re.M|re.I)
 								
 									if matchObj: 
-										matchObj = re.match( r'^lea [e]*a[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h]*|^lea [e]*b[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*b[x|l|h]*|^lea [e]*c[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*c[x|l|h]*|^lea [e]*d[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*d[x|l|h]*|^lea [e]*di, [dword|byte]+ [ptr]* \[[e]*di|^lea [e]*si, [dword|byte]+ [ptr]* \[[e]*si|^lea [e]*sp, [dword|byte]+ [ptr]* \[[e]*sp|^lea [e]*bp, [dword|byte]+ [ptr]* \[[e]*bp|lea [e]*a[x|l|h]+, [e]*a[x|l|h]+|lea [e]*b[x|l|h]+, [e]*b[x|l|h]+|lea [e]*c[x|l|h]+, [e]*c[x|l|h]+|lea [e]*d[x|l|h]+, [e]*d[x|l|h]+|lea [e]*di, [e]*di|lea [e]*si, [e]*si|lea [e]*bp, [e]*bp+|lea [e]*sp, [e]*sp|^lea [e]*a[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h] [+|-]+|^lea [dword|byte]+ ptr \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ |^lea [e]*[abcdspb]+[x|l|h|i|p]+, [dword|byte]+ ptr \[0x|^lea [e]*a[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h]+ [+|-]+|^lea [e]*[abcdspb]+[x|l|h|i|p]+, es|^lea [e]*[abcdspb]+[x|l|h|i|p]+, [dword|byte]+ [ptr]* \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ [e]*[abcdspb]+[x|l|h|i|p]+\*', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^lea [e]*a[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h]*|^lea [e]*b[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*b[x|l|h]*|^lea [e]*c[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*c[x|l|h]*|^lea [e]*d[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*d[x|l|h]*|^lea [e]*di, [dword|byte|word]+ [ptr]* \[[e]*di|^lea [e]*si, [dword|byte|word]+ [ptr]* \[[e]*si|^lea [e]*sp, [dword|byte|word]+ [ptr]* \[[e]*sp|^lea [e]*bp, [dword|byte|word]+ [ptr]* \[[e]*bp|lea [e]*a[x|l|h]+, [e]*a[x|l|h]+|lea [e]*b[x|l|h]+, [e]*b[x|l|h]+|lea [e]*c[x|l|h]+, [e]*c[x|l|h]+|lea [e]*d[x|l|h]+, [e]*d[x|l|h]+|lea [e]*di, [e]*di|lea [e]*si, [e]*si|lea [e]*bp, [e]*bp+|lea [e]*sp, [e]*sp|^lea [e]*a[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h] [+|-]+|^lea [dword|byte|word]+ ptr \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ |^lea [e]*[abcdspb]+[x|l|h|i|p]+, [dword|byte|word]+ ptr \[0x|^lea [e]*a[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h]+ [+|-]+|^lea [e]*[abcdspb]+[x|l|h|i|p]+, es|^lea [e]*[abcdspb]+[x|l|h|i|p]+, [dword|byte|word]+ [ptr]* \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ [e]*[abcdspb]+[x|l|h|i|p]+\*', val2[i-lGoBack], re.M|re.I)
 										if not matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -7008,7 +7695,7 @@ def disHereCall(address, NumOpsDis):
 											#eax - saving add to specific registers -- far more useful.
 											
 											
-											matchObj = re.match( r'^lea [e]*a[x|l|h]+|^lea [dword|byte]+ ptr \[[e]*a[x|l|h]', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^lea [e]*a[x|l|h]+|^lea [dword|byte|word]+ ptr \[[e]*a[x|l|h]', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -7016,7 +7703,7 @@ def disHereCall(address, NumOpsDis):
 													addListBaseLeaEAX(saveq, numLines, NumOpsDis, modName)
 												# addListBaseLeaEAX(save, lGoBack, NumOpsDis, modName)
 											#ebx
-											matchObj = re.match( r'^lea [e]*b[x|l|h]+|^lea [dword|byte]+ ptr \[[e]*b[x|l|h]', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^lea [e]*b[x|l|h]+|^lea [dword|byte|word]+ ptr \[[e]*b[x|l|h]', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -7024,7 +7711,7 @@ def disHereCall(address, NumOpsDis):
 													addListBaseLeaEBX(saveq, numLines, NumOpsDis, modName)
 												# addListBaseLeaEBX(save, lGoBack, NumOpsDis, modName)
 											#ecx
-											matchObj = re.match( r'^lea [e]*c[x|l|h]+|^lea [dword|byte]+ ptr \[[e]*c[x|l|h]', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^lea [e]*c[x|l|h]+|^lea [dword|byte|word]+ ptr \[[e]*c[x|l|h]', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -7032,7 +7719,7 @@ def disHereCall(address, NumOpsDis):
 													addListBaseLeaECX(saveq, numLines, NumOpsDis, modName)
 												# addListBaseLeaECX(save, lGoBack, NumOpsDis, modName)
 											#eDx
-											matchObj = re.match( r'^lea [e]*d[x|l|h]+|^lea [dword|byte]+ ptr \[[e]*d[x|l|h]', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^lea [e]*d[x|l|h]+|^lea [dword|byte|word]+ ptr \[[e]*d[x|l|h]', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -7041,7 +7728,7 @@ def disHereCall(address, NumOpsDis):
 												# addListBaseLeaEDX(save, lGoBack, NumOpsDis, modName)
 
 											#ESI 
-											matchObj = re.match( r'^lea [e]*si|^lea [dword|byte]+ ptr \[[e]*si', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^lea [e]*si|^lea [dword|byte|word]+ ptr \[[e]*si', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -7049,7 +7736,7 @@ def disHereCall(address, NumOpsDis):
 													addListBaseLeaESI(saveq, numLines, NumOpsDis, modName)
 												# addListBaseLeaESI(save, lGoBack, NumOpsDis, modName)
 											#EDI 
-											matchObj = re.match( r'^lea [e]*di|^lea [dword|byte]+ ptr \[[e]*di', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^lea [e]*di|^lea [dword|byte|word]+ ptr \[[e]*di', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												# print "leaedi enter"
 												numLines= giveLineNum(val5,val2[i-lGoBack])
@@ -7059,7 +7746,7 @@ def disHereCall(address, NumOpsDis):
 													addListBaseLeaEDI(saveq, numLines, NumOpsDis, modName)
 												# addListBaseLeaEDI(save, lGoBack, NumOpsDis, modName)
 											#esp
-											matchObj = re.match( r'^lea [e]*sp|^lea [dword|byte]+ ptr \[[e]*sp', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^lea [e]*sp|^lea [dword|byte|word]+ ptr \[[e]*sp', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -7067,7 +7754,7 @@ def disHereCall(address, NumOpsDis):
 													addListBaseLeaESP(saveq, numLines, NumOpsDis, modName)
 												# addListBaseLeaESP(save, lGoBack, NumOpsDis, modName)
 											#EBP
-											matchObj = re.match( r'^lea [e]*bp|^lea [dword|byte]+ ptr \[[e]*bp', val2[i-lGoBack], re.M|re.I)
+											matchObj = re.match( r'^lea [e]*bp|^lea [dword|byte|word]+ ptr \[[e]*bp', val2[i-lGoBack], re.M|re.I)
 											if matchObj:
 												numLines= giveLineNum(val5,val2[i-lGoBack])
 												z =stupidPreJ(val5, numLines)
@@ -7083,7 +7770,7 @@ def disHereCall(address, NumOpsDis):
 									matchObj = re.match( r'\bmov\b', val2[i-lGoBack], re.M|re.I)
 								
 									if matchObj: 
-										matchObj = re.match( r'^mov [e]*a[x|l]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h]*|^mov [e]*b[x|l]+, [dword|byte]+ [ptr]* \[[e]*b[x|l|h]*|^mov [e]*c[x|l]+, [dword|byte]+ [ptr]* \[[e]*c[x|l|h]*|^mov [e]*d[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*d[x|l|h]*|^mov [e]*di, [dword|byte]+ [ptr]* \[[e]*di|^mov [e]*si, [dword|byte]+ [ptr]* \[[e]*si|^mov [e]*sp, [dword|byte]+ [ptr]* \[[e]*sp|^mov [e]*bp, [dword|byte]+ [ptr]* \[[e]*bp|mov [e]*a[x|l]+, [e]*a[x|l|h]+|mov [e]*b[x|l]+, [e]*b[x|l|h]+|mov [e]*c[x|l|h]+, [e]*c[x|l|h]+|mov [e]*d[x|l]+, [e]*d[x|l|h]+|mov [e]*di, [e]*di|mov [e]*si, [e]*si|mov [e]*bp, [e]*bp+|mov [e]*sp, [e]*sp|^mov [e]*a[x|l]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h] [+|-]+|^mov [dword|byte]+ ptr \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ |^mov [e]*[abcdspb]+[x|l|i|p]+, [dword|byte]+ ptr \[0x|^mov [e]*a[x|l]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h]+ [+|-]+|^mov [e]*[abcdspb]+[x|l|i|p]+, es', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^mov [e]*a[x|l]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h]*|^mov [e]*b[x|l]+, [dword|byte|word]+ [ptr]* \[[e]*b[x|l|h]*|^mov [e]*c[x|l]+, [dword|byte|word]+ [ptr]* \[[e]*c[x|l|h]*|^mov [e]*d[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*d[x|l|h]*|^mov [e]*di, [dword|byte|word]+ [ptr]* \[[e]*di|^mov [e]*si, [dword|byte|word]+ [ptr]* \[[e]*si|^mov [e]*sp, [dword|byte|word]+ [ptr]* \[[e]*sp|^mov [e]*bp, [dword|byte|word]+ [ptr]* \[[e]*bp|mov [e]*a[x|l]+, [e]*a[x|l|h]+|mov [e]*b[x|l]+, [e]*b[x|l|h]+|mov [e]*c[x|l|h]+, [e]*c[x|l|h]+|mov [e]*d[x|l]+, [e]*d[x|l|h]+|mov [e]*di, [e]*di|mov [e]*si, [e]*si|mov [e]*bp, [e]*bp+|mov [e]*sp, [e]*sp|^mov [e]*a[x|l]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h] [+|-]+|^mov [dword|byte|word]+ ptr \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ |^mov [e]*[abcdspb]+[x|l|i|p]+, [dword|byte|word]+ ptr \[0x|^mov [e]*a[x|l]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h]+ [+|-]+|^mov [e]*[abcdspb]+[x|l|i|p]+, es', val2[i-lGoBack], re.M|re.I)
 										if not matchObj:
 											numLines= giveLineNum(val5,val2[i-lGoBack])
 											z =stupidPreJ(val5, numLines)
@@ -7166,7 +7853,7 @@ def disHereCall(address, NumOpsDis):
 									matchObj = re.match( r'\bmov\b', val2[i-lGoBack], re.M|re.I)
 								
 									if matchObj: 
-										matchObj = re.match( r'^mov [e]*a[x|l]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h]*|^mov [e]*b[x|l]+, [dword|byte]+ [ptr]* \[[e]*b[x|l|h]*|^mov [e]*c[x|l]+, [dword|byte]+ [ptr]* \[[e]*c[x|l|h]*|^mov [e]*d[x|l|h]+, [dword|byte]+ [ptr]* \[[e]*d[x|l|h]*|^mov [e]*di, [dword|byte]+ [ptr]* \[[e]*di|^mov [e]*si, [dword|byte]+ [ptr]* \[[e]*si|^mov [e]*sp, [dword|byte]+ [ptr]* \[[e]*sp|^mov [e]*bp, [dword|byte]+ [ptr]* \[[e]*bp|mov [e]*a[x|l]+, [e]*a[x|l|h]+|mov [e]*b[x|l]+, [e]*b[x|l|h]+|mov [e]*c[x|l|h]+, [e]*c[x|l|h]+|mov [e]*d[x|l]+, [e]*d[x|l|h]+|mov [e]*di, [e]*di|mov [e]*si, [e]*si|mov [e]*bp, [e]*bp+|mov [e]*sp, [e]*sp|^mov [e]*a[x|l]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h] [+|-]+|^mov [dword|byte]+ ptr \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ |^mov [e]*[abcdspb]+[x|l|i|p]+, [dword|byte]+ ptr \[0x|^mov [e]*a[x|l]+, [dword|byte]+ [ptr]* \[[e]*a[x|l|h]+ [+|-]+|^mov [e]*[abcdspb]+[x|l|i|p]+, es', val2[i-lGoBack], re.M|re.I)
+										matchObj = re.match( r'^mov [e]*a[x|l]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h]*|^mov [e]*b[x|l]+, [dword|byte|word]+ [ptr]* \[[e]*b[x|l|h]*|^mov [e]*c[x|l]+, [dword|byte|word]+ [ptr]* \[[e]*c[x|l|h]*|^mov [e]*d[x|l|h]+, [dword|byte|word]+ [ptr]* \[[e]*d[x|l|h]*|^mov [e]*di, [dword|byte|word]+ [ptr]* \[[e]*di|^mov [e]*si, [dword|byte|word]+ [ptr]* \[[e]*si|^mov [e]*sp, [dword|byte|word]+ [ptr]* \[[e]*sp|^mov [e]*bp, [dword|byte|word]+ [ptr]* \[[e]*bp|mov [e]*a[x|l]+, [e]*a[x|l|h]+|mov [e]*b[x|l]+, [e]*b[x|l|h]+|mov [e]*c[x|l|h]+, [e]*c[x|l|h]+|mov [e]*d[x|l]+, [e]*d[x|l|h]+|mov [e]*di, [e]*di|mov [e]*si, [e]*si|mov [e]*bp, [e]*bp+|mov [e]*sp, [e]*sp|^mov [e]*a[x|l]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h] [+|-]+|^mov [dword|byte|word]+ ptr \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ |^mov [e]*[abcdspb]+[x|l|i|p]+, [dword|byte|word]+ ptr \[0x|^mov [e]*a[x|l]+, [dword|byte|word]+ [ptr]* \[[e]*a[x|l|h]+ [+|-]+|^mov [e]*[abcdspb]+[x|l|i|p]+, es', val2[i-lGoBack], re.M|re.I)
 										if not matchObj:
 
 											numLines= giveLineNum(val5,val2[i-lGoBack])
@@ -7248,7 +7935,8 @@ def disHereCall(address, NumOpsDis):
 							#now5
 								
 								try:
-									matchObj = re.match( r'^mov dword ptr \[[e]*[abcdspbixfs]*\], [e]*[acbdps]+[x|p|i]+|^mov \[[e]*[abcdspbixfs]*\], [e]*[acbdps]+[x|p|i]+', val2[i-lGoBack], re.M|re.I)
+									
+									matchObj = re.match( r'^mov dword ptr \[[e]*', val2[i-lGoBack], re.M|re.I)
 									if matchObj:
 										# print "magicalDeref"
 										numLines= giveLineNum(val5,val2[i-lGoBack])
@@ -7256,60 +7944,61 @@ def disHereCall(address, NumOpsDis):
 										if z == True:
 											addListMovDeref(saveq, numLines, NumOpsDis, modName)
 
-										matchObj = re.match( r'^mov dword ptr \[[e]*a[x|l]+\], [e]*[cdspb]+[x|i|p]+|^mov dword ptr \[[e]*a[x|l]+\], [e]*[cdspb]+[x|i|p]+', val2[i-lGoBack], re.M|re.I)
-										if matchObj:
-											numLines= giveLineNum(val5,val2[i-lGoBack])
-											z =stupidPreJ(val5, numLines)
-											if z == True:
-												addListMovDerefEAX(saveq, numLines, NumOpsDis, modName)
+									matchObj = re.match( r'^mov dword ptr \[[e]*a[x|l]+.*\], [e]*[abcdsb]+|^mov dword ptr \[[e]*a[x|l]+.*\], [dword|word|byte]* ptr \[[e]*[abcdsb]+', val2[i-lGoBack], re.M|re.I)
+									if matchObj:
+										numLines= giveLineNum(val5,val2[i-lGoBack])
+										z =stupidPreJ(val5, numLines)
+										if z == True:
+											addListMovDerefEAX(saveq, numLines, NumOpsDis, modName)
 
 
-										matchObj = re.match( r'^mov dword ptr \[[e]*b[x|l]+\], [e]*[acdsp]+[x|i|p]+|^mov dword ptr \[[e]*b[x|l]+\], [e]*[acdsp]+[x|i|p]+', val2[i-lGoBack], re.M|re.I)
-										if matchObj:
-											numLines= giveLineNum(val5,val2[i-lGoBack])
-											z =stupidPreJ(val5, numLines)
-											if z == True:
-												addListMovDerefEBX(saveq, numLines, NumOpsDis, modName)
+									matchObj = re.match( r'^mov dword ptr \[[e]*b[x|l]+.*\], [e]*[abcdsb]+|^mov dword ptr \[[e]*b[x|l]+.*\], [dword|word|byte]* ptr \[[e]*[abcdsb]+', val2[i-lGoBack], re.M|re.I)
+									if matchObj:
+										numLines= giveLineNum(val5,val2[i-lGoBack])
+										z =stupidPreJ(val5, numLines)
+										if z == True:
+											addListMovDerefEBX(saveq, numLines, NumOpsDis, modName)
 
 
-										matchObj = re.match( r'^mov dword ptr \[[e]*c[x|l]+\], [e]*[adspb]+[x|i|p]+|^mov dword ptr \[[e]*c[x|l]+\], [e]*[adspb]+[x|i|p]+', val2[i-lGoBack], re.M|re.I)
-										if matchObj:
-											numLines= giveLineNum(val5,val2[i-lGoBack])
-											z =stupidPreJ(val5, numLines)
-											if z == True:
-												addListMovDerefECX(saveq, numLines, NumOpsDis, modName)
+									matchObj = re.match( r'^mov dword ptr \[[e]*c[x|l]+.*\], [e]*[abcdsb]+|^mov dword ptr \[[e]*c[x|l]+.*\], [dword|word|byte]* ptr \[[e]*[abcdsb]+', val2[i-lGoBack], re.M|re.I)
+									if matchObj:
+										numLines= giveLineNum(val5,val2[i-lGoBack])
+										z =stupidPreJ(val5, numLines)
+										if z == True:
+											addListMovDerefECX(saveq, numLines, NumOpsDis, modName)
 
-										matchObj = re.match( r'^mov dword ptr \[[e]*d[x|l]+\], [e]*[acspb]+[x|i|p]+|^mov dword ptr \[[e]*d[x|l]+\], [e]*[acspb]+[x|i|p]+', val2[i-lGoBack], re.M|re.I)
-										if matchObj:
-											numLines= giveLineNum(val5,val2[i-lGoBack])
-											z =stupidPreJ(val5, numLines)
-											if z == True:
-												addListMovDerefEDX(saveq, numLines, NumOpsDis, modName)
-										matchObj = re.match( r'^mov dword ptr \[[e]*di+\], [e]*[acdspb]+[x|p]+ |^mov dword ptr \[[e]*di+\], esi|^mov \[[e]*di+\], [e]*[acdspb]+[x|p]+ |^mov \[[e]*di+\], esi', val2[i-lGoBack], re.M|re.I)
-										if matchObj:
-											numLines= giveLineNum(val5,val2[i-lGoBack])
-											z =stupidPreJ(val5, numLines)
-											if z == True:
-												addListMovDerefEDI(saveq, numLines, NumOpsDis, modName)
+									matchObj = re.match( r'^mov dword ptr \[[e]*d[x|l]+.*\], [e]*[abcdsb]+|^mov dword ptr \[[e]*d[x|l]+.*\], [dword|word|byte]* ptr \[[e]*[abcdsb]+', val2[i-lGoBack], re.M|re.I)
+									if matchObj:
+										numLines= giveLineNum(val5,val2[i-lGoBack])
+										z =stupidPreJ(val5, numLines)
+										if z == True:
+											addListMovDerefEDX(saveq, numLines, NumOpsDis, modName)
+									matchObj = re.match( r'^mov dword ptr \[[e]*di.*\], [e]*[abcdsb]+|^mov dword ptr \[[e]*di.*\], [dword|word|byte]* ptr \[[e]*[abcdsb]+', val2[i-lGoBack], re.M|re.I)
+									if matchObj:
+										numLines= giveLineNum(val5,val2[i-lGoBack])
+										z =stupidPreJ(val5, numLines)
+										if z == True:
+											addListMovDerefEDI(saveq, numLines, NumOpsDis, modName)
 
-										matchObj = re.match( r'^mov dword ptr \[[e]*si+\], [e]*[acsspb]+[x|p]+ |^mov dword ptr \[[e]*si+\], edi|^mov \[[e]*si+\], [e]*[acsspb]+[x|p]+ |^mov \[[e]*si+\], edi', val2[i-lGoBack], re.M|re.I)
-										if matchObj:		
-											numLines= giveLineNum(val5,val2[i-lGoBack])
-											z =stupidPreJ(val5, numLines)
-											if z == True:
-												addListMovDerefESI(saveq, numLines, NumOpsDis, modName)
-										matchObj = re.match( r'^mov dword ptr \[[e]*bp+\], [e]*[acsp]+[x|p|i]+ |^mov dword ptr \[[e]*bp+\], edi|^mov \[[e]*bp+\], [e]*[acsp]+[x|p|i]+ |^mov \[[e]*bp+\], edi', val2[i-lGoBack], re.M|re.I)
-										if matchObj:
-											numLines= giveLineNum(val5,val2[i-lGoBack])
-											z =stupidPreJ(val5, numLines)
-											if z == True:
-												addListMovDerefEBP(saveq, numLines, NumOpsDis, modName)
-										matchObj = re.match( r'^mov dword ptr \[[e]*sp+\], [e]*[acbp]+[x|p|i]+ |^mov dword ptr \[[e]*sp+\], esi|^mov \[[e]*sp+\], [e]*[acbp]+[x|p|i]+ |^mov \[[e]*sp+\], esi', val2[i-lGoBack], re.M|re.I)
-										if matchObj:
-											numLines= giveLineNum(val5,val2[i-lGoBack])
-											z =stupidPreJ(val5, numLines)
-											if z == True:
-												addListMovDerefESP(saveq, numLines, NumOpsDis, modName)
+									matchObj = re.match( r'^mov dword ptr \[[e]*si.*\], [e]*[abcdsb]+|^mov dword ptr \[[e]*si.*\], [dword|word|byte]* ptr \[[e]*[abcdsb]+', val2[i-lGoBack], re.M|re.I)
+									if matchObj:		
+										numLines= giveLineNum(val5,val2[i-lGoBack])
+										z =stupidPreJ(val5, numLines)
+										if z == True:
+											addListMovDerefESI(saveq, numLines, NumOpsDis, modName)
+									matchObj = re.match( r'^mov dword ptr \[[e]*bp.*\], [e]*[abcdsb]+|^mov dword ptr \[[e]*bp.*\], [dword|word|byte]* ptr \[[e]*[abcdsb]+', val2[i-lGoBack], re.M|re.I)
+									if matchObj:
+										numLines= giveLineNum(val5,val2[i-lGoBack])
+										z =stupidPreJ(val5, numLines)
+										if z == True:
+											addListMovDerefEBP(saveq, numLines, NumOpsDis, modName)
+									matchObj = re.match( r'^mov dword ptr \[[e]*sp.*\], [e]*[abcdsb]+|^mov dword ptr \[[e]*sp.*\], [dword|word|byte]* ptr \[[e]*[abcdsb]+', val2[i-lGoBack], re.M|re.I)
+									if matchObj:
+										numLines= giveLineNum(val5,val2[i-lGoBack])
+										z =stupidPreJ(val5, numLines)
+										if z == True:
+											addListMovDerefESP(saveq, numLines, NumOpsDis, modName)
+
 
 								except:
 									pass
@@ -7706,7 +8395,7 @@ def disHereCall(address, NumOpsDis):
 								#searching for Shift Left
 								#not common, so no need to do by specific regs
 								try: 
-									matchObj = re.match( r'^s[a|h]l+[dwl]* [dword|byte]+ [ptr]* \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+|^salc ', val2[i-lGoBack], re.M|re.I)
+									matchObj = re.match( r'^s[a|h]l+[dwl]* [dword|byte|word]+ [ptr]* \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+|^salc ', val2[i-lGoBack], re.M|re.I)
 									if not matchObj:
 										matchObj = re.match( r'^shl|^sal', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
@@ -7720,7 +8409,7 @@ def disHereCall(address, NumOpsDis):
 									#Shift Right
 									#not common, so no need to do by specific regs
 								try: 
-									matchObj = re.match( r'^s[a|h]+r[dwl]* [dword|byte]+ [ptr]* \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+|^salc ', val2[i-lGoBack], re.M|re.I)
+									matchObj = re.match( r'^s[a|h]+r[dwl]* [dword|byte|word]+ [ptr]* \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+|^salc ', val2[i-lGoBack], re.M|re.I)
 									if not matchObj:	
 										matchObj = re.match( r'^shr|^sar', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
@@ -7734,7 +8423,7 @@ def disHereCall(address, NumOpsDis):
 									#Rotate Left 
 									#not common, so no need to do by specific regs
 								try: 
-									matchObj = re.match( r'^r[o|c]+l [dword|byte]+ [ptr]* \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ ', val2[i-lGoBack], re.M|re.I)
+									matchObj = re.match( r'^r[o|c]+l [dword|byte|word]+ [ptr]* \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ ', val2[i-lGoBack], re.M|re.I)
 									if not matchObj:
 										matchObj = re.match( r'^rol|^rcl', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
@@ -7748,7 +8437,7 @@ def disHereCall(address, NumOpsDis):
 									#Rotate Right
 									#not common, so no need to do by specific regs
 								try: 
-									matchObj = re.match( r'^r[o|c]+r [dword|byte]+ [ptr]* \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ ', val2[i-lGoBack], re.M|re.I)
+									matchObj = re.match( r'^r[o|c]+r [dword|byte|word]+ [ptr]* \[[e]*[abcdspb]+[x|l|h|i|p]+ [+|-]+ ', val2[i-lGoBack], re.M|re.I)
 									if not matchObj:	
 										matchObj = re.match( r'^ror|^rcr', val2[i-lGoBack], re.M|re.I)
 										if matchObj:
@@ -7764,7 +8453,8 @@ def disHereCall(address, NumOpsDis):
 	
 
 
-def disHereJMPPTR(address, NumOpsDis, Reg):
+
+def disHereJMPPTR(address, NumOpsDis, Reg, newReg = "default"):
 	#print "ok2"
 	#print  hex(int(address))
 	sp()
@@ -7872,7 +8562,10 @@ def disHereJMPPTR(address, NumOpsDis, Reg):
 						counter()
 					else:
 						save = int(save, 16)
-						addListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: address of target jmp [reg]; second parameter: number of lines to go back. third parameter: number of ops to go back.
+						if(newReg == "default"):
+							addListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: address of target jmp [reg]; second parameter: number of lines to go back. third parameter: number of ops to go back.
+						else:
+							addListBaseNewJmpPtr(save, val2.__len__(), NumOpsDis, modName, newReg)
 						#print "alert"
 
 						sp()
@@ -7881,15 +8574,20 @@ def disHereJMPPTR(address, NumOpsDis, Reg):
 					matchObj = re.match( r'\bnop\b|\bleave\b|\bcall\b|\bret\b|\bjmp\b|\bljmp\b|\bjo\b|\bjno\b|\bjsn\b|\bjs\b|\bje\b|\bjz\b|\bjne\b|\bjnz\b|\bjb\b|\bjnae\b|\bjc\b|\bjnb\bjae\b|\bjnc\b|\bjbe\bjna\b|\bja\b|\bjnben\b|\bjl\b|\bjnge\b|\bjge\bjnl\b|\bjle\b|\bjng\bjg\b|\bjnle\b|\bjp\b|\bjpe\b|\bjnp\b|\bjpo\bjczz\b|\bjecxz\b|\bcall\b|\bint\b|\bdb\b|\bretf\b|\bhlt\b', val2[i-2], re.M|re.I)
 					if not matchObj:
 						save = int(save, 16)
-						addListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: address of target jmp [reg]; second parameter: number of lines to go back. third parameter: number of ops to go back.
+						if(newReg == "default"):
+							addListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: address of target jmp [reg]; second parameter: number of lines to go back. third parameter: number of ops to go back.
 						#print "alert"
+						else:
+							addListBaseNewJmpPtr(save, val2.__len__(), NumOpsDis, modName, newReg)
 						sp()
 
 #ptr
-def disHereJMPPTR2(address, NumOpsDis, Reg):
 
+def disHereJMPPTR2(address, NumOpsDis, Reg, newReg = "default"):
+	# print ("disherejmppr2", newReg)
 	#### THIS IS TO FIND ONLY THE FINAL, JMP DWORD PTR EAX--FOR WHEN THERE IS NOT ANOTHER FORM WITH MORE THAN ONE LINE (I.E. OTHER INSTRUCTIONS)
 	global o
+	global linesGoBackFindOP
 	w=0
 	CODED2 = b""
 
@@ -7938,34 +8636,58 @@ def disHereJMPPTR2(address, NumOpsDis, Reg):
 		tk += 1
 
 	if val3 not in globalOuts:
-		globalOuts.append(val3)
-		addListBase(save, val2.__len__(), NumOpsDis, modName)
-
+		
+		# if newReg=="esi_short":
+		if newReg =="eax_short" or "ebx_short" or "ecx_short" or "edx_short" or "esi_short" or "edi_short" or "ebp_short" or "esp_short":
+			# print ("_short", val2, save)
+			# print "\t\t\t" + val
+			matchObj = re.match( r'\bjmp dword ptr \[esi \+\b|\bjmp dword ptr \[eax \+\b|\bjmp dword ptr \[ebx \+\b|\bjmp dword ptr \[ecx \+\b|\bjmp dword ptr \[edx \+\b|\bjmp dword ptr \[edi \+\b|\bjmp dword ptr \[ebp \+\b|\bjmp dword ptr \[esp \+\b', val, re.M|re.I)
+			if matchObj:
+				# print "gotshaha******************************************************************"
+				# addListBase(save, val2.__len__(), NumOpsDis, modName)
+				addListBaseNewJmpPtr2(save, val2.__len__(), NumOpsDis, modName, newReg)
+				#barn
+				globalOuts.append(val3)
+		if newReg =="eax" or "ebx" or "ecx" or "edx" or "esi" or "edi" or "ebp" or "esp":
+			globalOuts.append(val3)
+			addListBaseNewJmpPtr2(save, val2.__len__(), NumOpsDis, modName, newReg)
 	lGoBack = linesGoBackFindOP
 	matchObj = re.match( r'jmp', val, re.M|re.I)
 	if matchObj:
+		# print ("other", val2[i-2])
 		if save != 0:
 			if val2.__len__() > 1:
 				if val2.__len__() == 2:
-					matchObj = re.match( r'\bnop\b|\bleave\b|\bcall\b|\bret\b|\bjmp\b|\bljmp\b|\bretf\b|\bhlt\b', val2[i-2], re.M|re.I)
+					matchObj = re.match( r'\bnop\b|\bleave\b|\bcall\b|\bret\b|\bjmp\b|\bljmp\b|\bretf\b|\bhlt\b', val, re.M|re.I)
 					if matchObj:
 						counter()
 					else:
 						save = int(save, 16)
 						if val3 not in globalOuts:
+							# print ("other Not in gOuts", val2[i-2])
 							globalOuts.append(val3)
 							save2=int(save,16)
-							addListBase(save2, val2.__len__(), NumOpsDis, modName)
+							if(newReg == "default"):
+								# print ("default")
+								addListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: address of target jmp [reg]; second parameter: number of lines to go back. third parameter: number of ops to go back.
+							else:
+								# print ("new one")
+								addListBaseNewJmpPtr2(save, val2.__len__(), NumOpsDis, modName, newReg)
+							sp()
 
 	
 				else:
-					matchObj = re.match( r'\bnop\b|\bleave\b|\bcall\b|\bret\b|\bjmp\b|\bljmp\b|\bjo\b|\bjno\b|\bjsn\b|\bjs\b|\bje\b|\bjz\b|\bjne\b|\bjnz\b|\bjb\b|\bjnae\b|\bjc\b|\bjnb\bjae\b|\bjnc\b|\bjbe\bjna\b|\bja\b|\bjnben\b|\bjl\b|\bjnge\b|\bjge\bjnl\b|\bjle\b|\bjng\bjg\b|\bjnle\b|\bjp\b|\bjpe\b|\bjnp\b|\bjpo\bjczz\b|\bjecxz\b|\bcall\b|\bint\b|\bdb\b|\bretf\b|\bhlt\b', val2[i-2], re.M|re.I)
+					matchObj = re.match( r'\bnop\b|\bleave\b|\bcall\b|\bret\b|\bjmp\b|\bljmp\b|\bjo\b|\bjno\b|\bjsn\b|\bjs\b|\bje\b|\bjz\b|\bjne\b|\bjnz\b|\bjb\b|\bjnae\b|\bjc\b|\bjnb\bjae\b|\bjnc\b|\bjbe\bjna\b|\bja\b|\bjnben\b|\bjl\b|\bjnge\b|\bjge\bjnl\b|\bjle\b|\bjng\bjg\b|\bjnle\b|\bjp\b|\bjpe\b|\bjnp\b|\bjpo\bjczz\b|\bjecxz\b|\bcall\b|\bint\b|\bdb\b|\bretf\b|\bhlt\b', val, re.M|re.I)
 					if not matchObj:
 						save = int(save, 16)
 						if val3 not in globalOuts:
 							globalOuts.append(val3)
 							save2=int(save,16)
-							addListBase(save2, val2.__len__(), NumOpsDis, modName) 
+							if(newReg == "default"):
+								addListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: address of target jmp [reg]; second parameter: number of lines to go back. third parameter: number of ops to go back.
+							else:
+								addListBaseNewJmpPtr2(save, val2.__len__(), NumOpsDis, modName, newReg)
+							sp()
 def disHereJMPPTR2_CLEAN (address, NumOpsDis, mod, Reg):
 
 	#### THIS IS TO FIND ONLY THE FINAL, JMP DWORD PTR EAX--FOR WHEN THERE IS NOT ANOTHER FORM WITH MORE THAN ONE LINE (I.E. OTHER INSTRUCTIONS)
@@ -8369,11 +9091,12 @@ def doublecheckPopRet(saveq,val2,q,val5, NumOpsDis, modName):
 			q-=1
 	except:
 		pass
-def disHereCALLPTR(address, NumOpsDis, Reg):
+def disHereCALLPTR(address, NumOpsDis, Reg, newReg = "default"):
 	#print "ok2"
 	#print  hex(int(address))
 	sp()
 	global o
+	global linesGoBackFindOP
 	lGoBack = linesGoBackFindOP
 
 	w=0
@@ -8481,8 +9204,10 @@ def disHereCALLPTR(address, NumOpsDis, Reg):
 						counter()
 					else:
 						save = int(save, 16)
-						addListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: address of target jmp [reg]; second parameter: number of lines to go back. third parameter: number of ops to go back.
-						
+						if(newReg == "default"):
+							addListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: address of target jmp [reg]; second parameter: number of lines to go back. third parameter: number of ops to go back.
+						else:
+							addListBaseNewCallPTR(save, val2.__len__(), NumOpsDis, modName, newReg)						
 	
 				else:
 					matchObj = re.match( r'\bnop\b|\bleave\b|\bcall\b|\bret\b|\bjmp\b|\bljmp\b|\bjo\b|\bjno\b|\bjsn\b|\bjs\b|\bje\b|\bjz\b|\bjne\b|\bjnz\b|\bjb\b|\bjnae\b|\bjc\b|\bjnb\bjae\b|\bjnc\b|\bjbe\bjna\b|\bja\b|\bjnben\b|\bjl\b|\bjnge\b|\bjge\bjnl\b|\bjle\b|\bjng\bjg\b|\bjnle\b|\bjp\b|\bjpe\b|\bjnp\b|\bjpo\bjczz\b|\bjecxz\b|\bcall\b|\bint\b|\bdb\b|\bretf\b|\bhlt\b', val2[i-2], re.M|re.I)
@@ -8493,8 +9218,10 @@ def disHereCALLPTR(address, NumOpsDis, Reg):
 						
 						#print "alert"	
 						#print "SVAL:" + str(searchListBase(save, NumOpsDis))
-						addListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: address of target jmp [reg]; second parameter: number of lines to go back. third parameter: number of ops to go back.
-					
+						if(newReg == "default"):
+							addListBase(save, val2.__len__(), NumOpsDis, modName) # fist parameter: address of target jmp [reg]; second parameter: number of lines to go back. third parameter: number of ops to go back.
+						else:
+							addListBaseNewCallPTR(save, val2.__len__(), NumOpsDis, modName, newReg)					
 						#searchListBase2(save, NumOpsDis)
 
 						#print save
@@ -9595,7 +10322,7 @@ def disHereCleanNewDG(address, valCount, NumOpsDis, mod):
 	# print "valCount " + str(valCount)
 	# print "dAmount " + str(special) 
 	# print word2
-	return returnVal, special
+	return returnVal, (special-4)
 
 def disHereCleanSP2(address, valCount, NumOpsDis, special, Reg, mod):
 	spbytes =0
@@ -10136,7 +10863,7 @@ def findDG_EAX(address, valCount, NumOpsDis, modName, linesGoBack, HowDeep,jmpca
 		tt = val2.__len__()   
 		if tk < 1:
 			save = valAdd[i]   # This allows me to save the initial  address of the target jmp [reg] address.
-		tk += 1
+		tk += 1 
 		matchObj = re.match( r'\bshl\b|\bshr\b|\bsar\b|\bsal\b|\bshlb\b|\bshrb\b|\bsarb\b|\bsalb\b|\bshlw\b|\bshrw\b|\bsarw\b|\bsalw\b|\b', e, re.M|re.I)  #do inc or dec separate
 		if matchObj: 
 			matchObj = re.match( r'^s[h|a]+[l|r]+[dwl]* [e]*a[x|l|h]+, [1|2]+', e, re.M|re.I) #only 1 or 2 because anything else is too inconcievable, and shift left / shift right can provide can provide other options. 
@@ -11181,159 +11908,36 @@ def runGetRegs():
 	#print ""#"in runGetRegs"
 	#print getDG
 	sp
-	if getJMP:
-		for reg in Regs:
-			if reg == "EAX":
-				print "Getting JMP EAX"
-				sp()
-				try:
-					get_OP_JMP_EAX(NumOpsD)
-				except:
-					pass
-				try:	
-					get_OP_JMP_PTR_EAX(NumOpsD)
-				except:
-					pass
-				try:
-					get_OP_JMP_PTR_EMPTY_EAX(NumOpsD)
-					get_OP_JMP_PTR_OTHER_EAX(NumOpsD)
-				except:
-					pass
-				print "Done getting EAX"
-				sp()
-			if reg == "EBX":
-				print "Getting JMP EBX"
-				sp()
-				get_OP_JMP_EBX(NumOpsD)
-				get_OP_JMP_PTR_EBX(NumOpsD)
-				try:	
-					get_OP_JMP_PTR_EMPTY_EBX(NumOpsD)
-					get_OP_JMP_PTR_OTHER_EBX(NumOpsD)
-				except:
-					pass
-				print "Done getting EBX"
-			if reg == "ECX":
-				print "Getting JMP ECX"
-				sp()
-				get_OP_JMP_ECX(NumOpsD)
-				get_OP_JMP_PTR_ECX(NumOpsD)
-				try:	
-					get_OP_JMP_PTR_EMPTY_ECX(NumOpsD)
-					get_OP_JMP_PTR_OTHER_ECX(NumOpsD)
-				except:
-					pass
-				print "Done getting ECX"
-			if reg == "EDX":
-				print "Getting JMP EDX"
-				sp()
-				get_OP_JMP_EDX(NumOpsD)
-				get_OP_JMP_PTR_EDX(NumOpsD)
-				try:	
-					get_OP_JMP_PTR_EMPTY_EDX(NumOpsD)
-					get_OP_JMP_PTR_OTHER_EDX(NumOpsD)
-				except:
-					pass				
-				print "Done getting EDX"
-			if reg == "EDI":
-				print "Getting JMP EDI"
-				sp()
-				get_OP_JMP_EDI(NumOpsD)
-				get_OP_JMP_PTR_EDI(NumOpsD)
-				try:	
-					get_OP_JMP_PTR_EMPTY_EDI(NumOpsD)
-					get_OP_JMP_PTR_OTHER_EDI(NumOpsD)
-				except:
-					pass				
-				print "Done getting EDI"
-			if reg == "ESI":
-				print "Getting JMP ESI"
-				sp()
-				get_OP_JMP_ESI(NumOpsD)
-				get_OP_JMP_PTR_ESI(NumOpsD)
-				try:	
-					get_OP_JMP_PTR_EMPTY_ESI(NumOpsD)
-					get_OP_JMP_PTR_OTHER_ESI(NumOpsD)
-				except:
-					pass				
-				print "Done getting ESI"
-			if reg == "EBP":
-				print "Getting JMP EBP"
-				sp()
-				get_OP_JMP_EBP(NumOpsD)
-				get_OP_JMP_PTR_EBP(NumOpsD)
-				try:	
-					get_OP_JMP_PTR_EMPTY_EBP(NumOpsD)
-					get_OP_JMP_PTR_OTHER_EBP(NumOpsD)
-				except:
-					pass				
-				print "Done getting EBP"
-			if reg == "ESP":
-				print "Getting JMP ESP"
-				sp()
-				get_OP_JMP_ESP(NumOpsD)
-				get_OP_JMP_PTR_ESP(NumOpsD)
-				try:	
-					get_OP_JMP_PTR_EMPTY_ESP(NumOpsD)
-					get_OP_JMP_PTR_OTHER_ESP(NumOpsD)
-				except:
+
+
+	if(getJMP and getCALL):
+		print "Getting JMPs and CALLs"
+		sp()
+		try:
+			get_OP_ALL_BOTH(NumOpsD)
+		except Exception as e:
+			# print e
+			pass
+
+	else:
+		if getJMP:
+			print "Getting JMPs"
+			sp()
+			try:
+				get_OP_ALL_JMP(NumOpsD)
+			except Exception as e:
+					# print e
 					pass
 
-				print "Done getting ESP"
-	if getCALL:
-		for reg in Regs:
-			if reg == "EAX":
-				print "Getting CALL EAX"
-				sp()
-				get_OP_CALL_EAX(NumOpsD)
-				get_OP_CALL_PTR_EAX(NumOpsD)				
-				print "Done getting EAX"
-			if reg == "EBX":
-				print "Getting CALL EBX"
-				sp()
-				get_OP_CALL_EBX(NumOpsD)
-				get_OP_CALL_PTR_EBX(NumOpsD)				
-				print "Done getting EBX"
-			if reg == "ECX":
-				print "Getting CALL ECX"
-				sp()
-				get_OP_CALL_ECX(NumOpsD)				
-				get_OP_CALL_PTR_ECX(NumOpsD)
-				print "Done getting ECX"
-			if reg == "EDX":
-				print "Getting CALL EDX"
-				sp()
-				get_OP_CALL_EDX(NumOpsD)
-				get_OP_CALL_PTR_EDX(NumOpsD)
-				print "Done getting EDX"
-			if reg == "EDI":
-				print "Getting CALL EDI"
-				sp()
-				get_OP_CALL_EDI(NumOpsD)
-				get_OP_CALL_PTR_EDI(NumOpsD)
-				print "Done getting EDI"
-			if reg == "ESI":
-				print "Getting CALL ESI"
-				sp()
-				get_OP_CALL_ESI(NumOpsD)
-				get_OP_CALL_PTR_ESI(NumOpsD)
-				print "Done getting ESI"
-			if reg == "EBP":
-				print "Getting CALL EBP"
-				sp()
-				get_OP_CALL_EBP(NumOpsD)
-				get_OP_CALL_PTR_EBP(NumOpsD)
-				print "Done getting EBP"
-			if reg == "ESP":
-				print "Getting CALL ESP"
-				sp()
-				get_OP_CALL_ESP(NumOpsD)
-				get_OP_CALL_PTR_ESP(NumOpsD)
-				print "Done getting ESP"
-	#if getDG:
-	#	print ""#"in getDG"
-	#	sp()
-	#	runGetRegsDG()
-	#print it
+		elif getCALL:
+			print "Getting CALLSs"
+			sp()
+			try:
+				get_OP_ALL_CALL(NumOpsD)
+			except Exception as e:
+					# print e
+					pass
+
 
 def binaryToStr(binary):
 	OP_SPECIAL = b"\x8d\x4c\xff\xe2\x01\xd8\x81\xc6\x34\x12\x00\x00"
@@ -11607,14 +12211,16 @@ def changeRegsVP():
 		#print "Registers selected: " + display
 		sp()
 	if not skip:
+		RegsVP [:] = []
 		RegsVP = reg.split(',')
-		RegsVP = cutDown(Regs,IA86)
+		print RegsVP
+		# RegsVP = cutDown(Regs,IA86)
 		display = ""
 	display =""
-	for r in RegsPrint:
+	for r in RegsVP:
 		display += r + "    "
 		sp()
-	print "Registers to print selected: " + display	
+	print "Registers to print selected:\n " + display	
 def changelinesGoBack():
 	global linesGoBackFindOP
 	print "New lines go back value:"
@@ -11622,6 +12228,7 @@ def changelinesGoBack():
 	linesGoBackFindOP = raw_input()
 def changeCheckAllModules():
 	global CheckallModules
+	global levelTwo
 	print "1 - Check only PE"
 	print "2 - Check all modules\n"
 	print "3 - Check all modules and more\n"
@@ -11986,6 +12593,8 @@ def showVPOptions():
 	out +="\tYou only need to do this once per PE file.\n"
 	out +="u: Using gadgets already found; do not clear.\n"
 	out +="\tYou only need to do this once per PE file. Do s *or* u.\n"
+	out +="r: change registers to look for JOP gadgets\n"
+	out +="\tDefault: all registers\n"
 	out +="h: display options\n"
 	out +="x or X: return to previous menu\n"
 	print out
@@ -12150,6 +12759,7 @@ def runPrintS():
 	global printDispatcherEDIOther
 	global printDispatcherESIOther
 	global printDispatcherEBPOther
+	global printMitigations
 
 	print "Setting print settings..."
 	display = ""
@@ -12210,7 +12820,6 @@ def runPrintS():
 			printptrjbp = True	    	
 		if r == "cbp":
 			printcbp = True
-
 		if r == "c":
 			printca = True
 			printcb = True
@@ -12402,7 +13011,14 @@ def runPrintS():
 			printDispatcherEDIOther = True
 			printDispatcherESIOther = True
 			printDispatcherEBPOther = True
+			# printMitigations = True
+			printlistOP_DG_Rare = True
+			printlistOP_JMP_PTR_EMPTY = True
+			printlistOP_SP3 = True
 		if r == "rec":
+			printlistOP_DG_Rare = True
+			printlistOP_JMP_PTR_EMPTY = True
+			printlistOP_SP3 = True
 			printAdd = True
 			printSub = True
 			printMul = True
@@ -12487,6 +13103,9 @@ def runPrintS():
 			printDispatcherEDIOther = True
 			printDispatcherESIOther = True
 			printDispatcherEBPOther = True
+		if r == "mit":
+			printMitigations = True
+
 def clearallDLLs(): #5
 	global w
 	global PE_DLLS
@@ -12585,6 +13204,7 @@ def clearallPrint():
     global printDispatcherEDIOther
     global printDispatcherESIOther
     global printDispatcherEBPOther
+    global printMitigations
     printja = False
     printjb = False
     printjc = False
@@ -12659,499 +13279,53 @@ def clearallPrint():
     printDispatcherEDIOther = False
     printDispatcherESIOther = False
     printDispatcherEBPOther = False
+    printMitigations =  False
 
     DebugCheck()
 
-def finalPrintSubold(): 
-	global printja
-	global printjb
-	global printjc
-	global printjd
-	global printjdi
-	global printjsi
-	global printjbp
-	global printjsp
-	global printptrja
-	global printptrjb
-	global printptrjc
-	global printptrjd
-	global printptrjdi
-	global printptrjsi
-	global printptrjbp
-	global printptrjsp
-	global printca
-	global printcb
-	global printcc
-	global printcd
-	global printdi
-	global printsi
-	global printcbp
-	global printcsp
-	global printptrca
-	global printptrcb
-	global printptrcc
-	global printptrcd
-	global printptrdi
-	global printptrsi
-	global printptrcbp
-	global printptrcsp 
-	global printemp
-	global printrareDG
-	global printStack   
-	global printAdd
-	global printSub
-	global printMul
-	global printDiv
-	global printMov
-	global printMovV
-	global printDeref
-	global printMovS
-	global printLea
-	global printXchg
-	global printPop
-	global printPush
-	global printDec
-	global printInc
-	global printShiftLeft
-	global printShiftRight
-	global printRotateRight
-	global printRotateLeft
-	global printDispatcherEAX
-	global printDispatcherEBX
-	global printDispatcherECX
-	global printDispatcherEDX
-	global printDispatcherEDI
-	global printDispatcherESI
-	global printDispatcherEBP
-	global printDispatcherEAXBest
-	global printDispatcherEBXBest 
-	global printDispatcherECXBest
-	global printDispatcherEDXBest
-	global printDispatcherEDIBest
-	global printDispatcherESIBest
-	global printDispatcherEBPBest
-	global printDispatcherEAXOther
-	global printDispatcherEBXOther 
-	global printDispatcherECXOther
-	global printDispatcherEDXOther
-	global printDispatcherEDIOther
-	global printDispatcherESIOther
-	global printDispatcherEBPOther
-	global o
-	global printStack
-	global printDeref
-	global RegsPrint
-	o =0
-	#print "o " + str(o)
-	#print "Final print setings..."
-	#print RegsPrint
-
-	sp()
-	count = 0
-	try:
-		if printStack == True:
-			printlistOP_SP(NumOpsD, "All")
-			# printlistOP_SP3(NumOpsD, "All")
-			print "done"
-	except:
-		pass
-
-	for Reg in RegsPrint:  #For loop does not work properly without the try's. That is, if one subrountine cannot rune, the for loop would break, thereby not letting me do all it is supposed to do.
-		
-		try:
-			print "try add " +  str(printAdd)
-			if printAdd == True:
-				print "in addd is true"
-				sp()
-				printlistOP_Add(NumOpsD, Reg)
-		except:
-			pass
-		try:
-			if printSub == True:
-				printlistOP_Sub(NumOpsD, Reg)
-		except:
-			pass
-		try:
-			if printMul == True:
-				printlistOP_Mul(NumOpsD, Reg)
-		except:
-			pass
-		try:
-			if printDiv == True:
-				printlistOP_Div(NumOpsD, Reg)
-		except:
-			pass
-		try:
-			if printMov == True:
-				printlistOP_Mov(NumOpsD, Reg)
-		except:
-			pass
-		try:
-			if printMovV == True:
-				printlistOP_MovVal(NumOpsD, Reg)
-		except:
-			pass
-		try:
-			global printDeref
-			if printDeref == True:
-				printlistOP_MovDeref(NumOpsD, Reg)
-		except:
-			pass
-		try:
-			if printMovS == True:
-				printlistOP_MovShuf(NumOpsD, Reg)
-		except:
-			pass
-		try:
-			if printLea == True:
-				printlistOP_Lea(NumOpsD, Reg)
-		except:
-			pass
-		try:
-			if printXchg == True:
-				printlistOP_Xchg(NumOpsD, Reg)
-		except:
-			pass
-		try:
-			if printPop == True:
-				printlistOP_Pop(NumOpsD, Reg)
-		except:
-			pass
-		try:
-			if printPush == True:
-				printlistOP_Push(NumOpsD, Reg)
-		except:
-			pass
-		try:
-			if printDec == True:
-				printlistOP_Dec(NumOpsD, Reg)
-		except:
-			pass
-		try:
-			if printInc == True:
-				printlistOP_Inc(NumOpsD, Reg)
-		except:
-			pass
-		try:
-			if printShiftLeft == True:
-				printlistOP_ShiftLeft(NumOpsD, Reg)
-		except:
-			pass
-		try:
-			if printShiftRight == True:
-				printlistOP_ShiftRight(NumOpsD, Reg)
-		except:
-			pass
-		try:
-			if printRotateRight == True:
-				printlistOP_RotRight(NumOpsD, Reg)
-		except:
-			pass
-		try:
-			if printRotateLeft == True:
-				printlistOP_RotLeft(NumOpsD, Reg)
-		except:
-			pass
-		count = count +1
-
-		####
-	try:
-		if printDispatcherEAX == True:
-			printListDG_EAX(NumOpsD)		
-	except:
-		pass
-	try:
-		if printDispatcherEBX == True:
-			printListDG_EBX(NumOpsD)
-	except:
-		pass
-	try:
-		if printDispatcherECX == True:
-			printListDG_ECX(NumOpsD)
-	except:
-		pass
-	try:
-		if printDispatcherEDX == True:
-			printListDG_EDX(NumOpsD,"jmp")
-	except:
-		pass
-	try:
-		if printDispatcherEDI == True:
-			printListDG_EDI(NumOpsD)
-	except:
-		pass
-	try:
-		if printDispatcherESI == True:
-			printListDG_ESI(NumOpsD)
-	except:
-		pass
-	try:
-		if printDispatcherEBP == True:
-			printListDG_EBP(NumOpsD)
-	except:
-		pass
-	try:
-		if printDispatcherEAXBest == True:
-			printListDG_BEST_EAX(NumOpsD)    
-	except:
-		pass
-	try:
-		if printDispatcherEBXBest == True:
-			printListDG_BEST_EBX(NumOpsD)    
-	except:
-		pass
-	try:
-		if printDispatcherECXBest == True:
-			printListDG_BEST_ECX(NumOpsD)    
-	except:
-		pass
-	try:
-		if printDispatcherEDXBest == True:
-			printListDG_BEST_EDX(NumOpsD)    
-	except:
-		pass
-	try:
-		if printDispatcherEDIBest == True:
-			printListDG_BEST_EDI(NumOpsD)    
-	except:
-		pass
-	try:
-		if printDispatcherESIBest == True:
-			printListDG_BEST_ESI(NumOpsD)    
-	except:
-		pass
-	try:
-		if printDispatcherEBPBest == True:
-			printListDG_BEST_EBP(NumOpsD)    
-	except:
-		pass
-	try:
-		if printDispatcherEAXOther == True:
-			printListDG_Other_EAX(NumOpsD)    
-	except:
-		pass
-	try:
-		if printDispatcherEBXOther == True:
-			printListDG_Other_EBX(NumOpsD)    
-	except:
-		pass
-	try:
-		if printDispatcherECXOther == True:
-			printListDG_Other_ECX(NumOpsD)    
-	except:
-		pass
-	try:
-		if printDispatcherEDXOther == True:
-			printListDG_Other_EDX(NumOpsD)    
-	except:
-		pass
-	try:
-		if printDispatcherEDIOther == True:
-			printListDG_Other_EDI(NumOpsD)    
-	except:
-		pass
-	try:
-		if printDispatcherESIOther == True:
-			printListDG_Other_ESI(NumOpsD)    
-	except:
-		pass
-	try:
-		if printDispatcherEBPOther == True:
-			printListDG_Other_EBP(NumOpsD)    
-	except:
-		pass
-
-	try:
-		if printja == True:
-			printlistOP_JMP_EAX(NumOpsD)
-			#
-			#
-			#	o = o + 1
-	except:
-		pass
-	try:
-		if printjb == True:
-			#objs[o].printlistOP_JMP_EBX(NumOpsD)
-			printlistOP_JMP_EBX(NumOpsD)
-	except:
-		pass
-	try:
-		if printjc == True:
-			printlistOP_JMP_ECX(NumOpsD)
-	except:
-		pass
-	try:
-		if printjd == True:
-			printlistOP_JMP_EDX(NumOpsD)
-	except:
-		pass
-	try:
-		if printjdi == True:
-			printlistOP_JMP_EDI(NumOpsD)
-	except:
-		pass
-	try:
-		if printjsi == True:
-			printlistOP_JMP_ESI(NumOpsD)
-	except:
-		pass
-	try:
-		if printjbp == True:
-			printlistOP_JMP_EBP(NumOpsD)
-	except:
-		pass
-	try:
-		if printjsp == True:
-			printlistOP_JMP_ESP(NumOpsD)
-	except:
-		pass
-	try:
-		if printca == True:
-			printlistOP_CALL_EAX(NumOpsD)
-	except:
-		pass
-	try:
-		if printcb == True:
-			printlistOP_CALL_EBX(NumOpsD)
-	except:
-		pass
-	try:
-		if printcc == True:
-			printlistOP_CALL_ECX(NumOpsD)
-	except:
-		pass
-	try:
-		if printcd == True:
-			printlistOP_CALL_EDX(NumOpsD)
-	except:
-		pass
-	try:
-		if printdi == True:
-			printlistOP_CALL_EDI(NumOpsD)
-	except:
-		pass
-	try:
-		if printsi == True:
-			printlistOP_CALL_ESI(NumOpsD)
-	except:
-		pass
-	try:
-		if printcbp == True:
-			printlistOP_CALL_EBP(NumOpsD)
-	except:
-		pass
-	try:
-		if printcsp == True:
-			printlistOP_CALL_ESP(NumOpsD)
-	except:
-		pass
-
-	try:
-		if printptrjb == True:
-			#objs[o].printlistOP_JMP_PTR_EBX(NumOpsD)
-			printlistOP_JMP_PTR_EBX(NumOpsD)
-	except:
-		pass
-	try:
-		if printptrjc == True:
-			printlistOP_JMP_PTR_ECX(NumOpsD)
-	except:
-		pass
-	try:
-		if printptrjd == True:
-			printlistOP_JMP_PTR_EDX(NumOpsD)
-	except:
-		pass
-	try:
-		if printptrjdi == True:
-			printlistOP_JMP_PTR_EDI(NumOpsD)
-	except:
-		pass
-	try:
-		if printptrjsi == True:
-			printlistOP_JMP_PTR_ESI(NumOpsD)
-	except:
-		pass
-	try:
-		if printptrjbp == True:
-			printlistOP_JMP_PTR_EBP(NumOpsD)
-	except:
-		pass
-	try:
-		if printptrjsp == True:
-			printlistOP_JMP_PTR_ESP(NumOpsD)
-	except:
-		pass
-	try:
-		if printptrca == True:
-			printlistOP_CALL_PTR_EAX(NumOpsD)
-	except:
-		pass
-	try:
-		if printptrcb == True:
-			printlistOP_CALL_PTR_EBX(NumOpsD)
-	except:
-		pass
-	try:
-		if printptrcc == True:
-			printlistOP_CALL_PTR_ECX(NumOpsD)
-	except:
-		pass
-	try:
-		if printptrcd == True:
-			printlistOP_CALL_PTR_EDX(NumOpsD)
-	except:
-		pass
-	try:
-		if printptrdi == True:
-			printlistOP_CALL_PTR_EDI(NumOpsD)
-	except:
-		pass
-	try:
-		if printptrsi == True:
-			printlistOP_CALL_PTR_ESI(NumOpsD)
-	except:
-		pass
-	try:
-		if printptrcbp == True:
-			printlistOP_CALL_PTR_EBP(NumOpsD)
-	except:
-		pass
-	try:
-		if printptrcsp == True:
-			printlistOP_CALL_PTR_ESP(NumOpsD)
-	except:
-		pass
-
 def ObtainAndExtractDlls():
+	global CheckallModules
+	global levelTwo
 	getDLLs()
 	global peName
 	global PE_DLLS
 	global o
 	global index
 	global modName
-	global CheckallModules
 	CheckallModules = True
 
 	test = ""
 	i = 0
 	index = 0
+
+
+	# noApi_MS(PE_DLLS)
+	# Answer	= set(PE_DLLS) - set(Remove)
+	# PE_DLLS = list(Answer)
+	i=0
 	for dll in PE_DLLS:
-		test = extractDLLNew(PE_DLLS[i])
+		try:
+			test = extractDLLNew(PE_DLLS[i], False)
+		except:
+			pass
 		head, tail = os.path.split(test)
 		modName = tail
 		i +=1
 	PE_DLLS = listReducer(PE_DLLS)
-	moreDLLs()
 	noApi_MS(PE_DLLS)
 	Answer	= set(PE_DLLS) - set(Remove)
 	PE_DLLS = list(Answer)
+	moreDLLs()
+	
+	
 	
 	display = ""
 	for r in PE_DLLS:
 		display = display + r + ", "
+	# display = display[:2]
 	print "DLLs: " + display
-	print len(PE_DLLS)
+	# print len(PE_DLLS)
+
 
 	# index = 0
 	# i = 0
@@ -13165,7 +13339,7 @@ def ObtainAndExtractDlls():
 	# 	pe = pefile.PE(test)
 	# 	print "hi"
 	# 	sp()
-	# 	objs[o].protect = str(dllName) + "\t"
+	# 	objs[o].protect = str(dllName)
 	# 	objs[o].depStatus = "\tDEP: " + str(dep())
 	# 	objs[o].aslrStatus = "\tASLR: " + str(aslr())
 	# 	objs[o].sehSTATUS = "\tSAFESEH: " + str(seh())
@@ -13209,6 +13383,8 @@ def UI():
 	global peName
 	global peNameSkip
 	global Regs
+	global getCALL
+	global getJMP
 
 	#print "\nWhat is your choice?"
 	sp()
@@ -13265,43 +13441,68 @@ def UI():
 		     		changeCheckAllModules()
 		     	print "Setting changed.\nUse the m command to enumerate modules."
 		    if r == "m": #debug
-		    	ObtainAndExtractDlls()
+		    	if levelTwo and CheckallModules:
+		    		print ("Scope is set to search all modules in the IAT and beyond")
+		    		ObtainAndExtractDlls()
+		    	if CheckallModules and not levelTwo:
+		    		print ("Scope is set to search ONLY modules in the IAT")
+		    		ObtainAndExtractDlls()
+		    	if not CheckallModules and not levelTwo:
+		    		print ("Warning: Scope is not set to scan any modules.\nWould you like to change this?\n\tY = Yes\n\tN = No")
+		    		ans = raw_input()
+		    		if ans == "Y" or ans == "y":
+		    			changeCheckAllModules()
+		    			ObtainAndExtractDlls()
+		    		if ans == "N" or ans == "n":
+		    			"Ok - this will ONLY show the modules in the IAT\n."
+		    			ObtainAndExtractDlls()
 		    	print "\nEnumeration of modules complete."
 		    	sp()
+		    if r == "M":
+		    	setMitigationsAvoidUI()	
 		    if r[0:1] == "c": #4
 		    	if not checkForHelpD(r):
-		     		clearAllObject()
-		     		clearAll()
+		    		clearAllObject()
+		    		clearAll()
 		    if r[0:1] == "k": # clear
 		    	if not checkForHelpD(r):
-		     		clearallDLLs()
-		     		print "DLLs cleared"
+		    		clearallDLLs()
+		    		print "DLLs cleared"
 		    if r[0:1] == "n": # Num Ops
 		    	if not checkForHelpD(r):
 		    		changeNumOps()
 		    if r[0:1] == "w": # Num Ops
 		    	if not checkForHelpD(r):
 		    		showProtectStatus()
+		   	# if r[0:1] == "b":
+		   	# 	print ("bad")
+		   	# 	setBadChars()
 		    if (r[0:1] == "g") or (r[0:1] == "z"): # Num Ops
 		    	print "Getting it"
 		    	sp()
 		    	runIt()
 		    if (r[0:1] == "G"): # Num Ops
-		    	global Regs
-		    	print "Getting it"
-		    	Regs=["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EDI", "EBP", "ESP"]
+		    	getCALL=False
+		    	getJMP=True
+		    	print "Getting it, JMP: all regs"
+		    	Regs=["ALL"]
 		    	sp()
 		    	runIt()		    	
+		    if (r[0:1] == "C"): # Num Ops
+		    	getCALL=True
+		    	getJMP=False	    	
+		    	print "Getting it, CALL: all regs"
+		    	Regs=["ALL"]
+		    	sp()
+		    	runIt()			    	
 		    # if r[0:1] == "G": # Num Ops
 		    # 	print "DGrun it"
 		    # 	sp()
 		    # 	runGetRegsDG()
 		    if (r[0:1] == "Z"): # Num Ops
-		    	global getCALL
-		    	global getJMP
 		    	getCALL=True
 		    	getJMP=True
-		    	print "Getting it"
+		    	print "Getting it, CALL and JMP: all regs"
 		    	Regs=["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EDI", "EBP", "ESP"]
 		    	sp()
 		    	runIt()		    	
@@ -13310,7 +13511,7 @@ def UI():
 		    # 	sp()
 		    # 	runGetRegsDG()
 		    if r[0:1] == "b": # Num Ops
-		    	setHashCheck()
+		    	setBadChars()
 		    if r[0:1] == "u": # 
 		    	if not checkForHelpD(r):
 		        	testDiss()
@@ -13342,7 +13543,8 @@ def UI():
 		    	# print "hello"
 		    	testtest3()
 		    if r[0:1] == "q":
-		    	credits()		    	
+		    	credits()
+
 		except:
 		    pass
 
@@ -13396,6 +13598,68 @@ def b():
 	testtest2()
 
 def initVPVA():
+	global getJMP
+	global getCALL
+	global Regs
+	try:
+		getJMP=True
+		getCALL=False
+		Regs =["EAX", "ECX","EBX","EDX","EDI","ESI", "EBP","ESP"]
+		get_OP_ALL_JMP(NumOpsD)
+	except:
+		pass
+
+					
+	# try:
+	# 	get_OP_JMP_PTR_EMPTY_EAX(NumOpsD)
+	# 	get_OP_JMP_PTR_OTHER_EAX(NumOpsD)
+	# except:
+	# 	pass
+		
+	# try:	
+	# 	get_OP_JMP_PTR_EMPTY_EBX(NumOpsD)
+	# 	get_OP_JMP_PTR_OTHER_EBX(NumOpsD)
+	# except:
+	# 	pass
+		
+	# try:	
+	# 	get_OP_JMP_PTR_EMPTY_ECX(NumOpsD)
+	# 	get_OP_JMP_PTR_OTHER_ECX(NumOpsD)
+	# except:
+	# 	pass
+		
+	# try:	
+	# 	get_OP_JMP_PTR_EMPTY_EDX(NumOpsD)
+	# 	get_OP_JMP_PTR_OTHER_EDX(NumOpsD)
+	# except:
+	# 	pass
+		
+	# try:	
+	# 	get_OP_JMP_PTR_EMPTY_ESI(NumOpsD)
+	# 	get_OP_JMP_PTR_OTHER_ESI(NumOpsD)
+	# except:
+	# 	pass
+		
+	# try:	
+	# 	get_OP_JMP_PTR_EMPTY_EBP(NumOpsD)
+	# 	get_OP_JMP_PTR_OTHER_EBP(NumOpsD)
+	# except:
+	# 	pass
+		
+	# try:	
+	# 	get_OP_JMP_PTR_EMPTY_ESP(NumOpsD)
+	# 	get_OP_JMP_PTR_OTHER_ESP(NumOpsD)
+	# except:
+	# 	pass
+
+	runGetRegsDGNew()
+	preprocessOP_SP(NumOpsD, "EAX")
+	sortBytesSPAll()
+	Regs=["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EDI", "EBP", "ESP"]
+	RegsDG=["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EDI", "EBP", "ESP"]
+	buildPopRets()
+
+def initVPVA_old():
 	print "Clearing previous settings"
 	clearAll()
 	clearAllObject()
@@ -13595,10 +13859,13 @@ def testtest2():
 
 
 def doFinalVA(z):
+	global directory
+
 	global RegsVP
 	outVA=""
 	outVP=""
 	for Reg in RegsVP:
+		print ("Building DEP Bypass for " + Reg)
 		if Reg=="EAX":
 			# print "ok"
 			for x in range(z):
@@ -13660,9 +13927,9 @@ def doFinalVA(z):
 			resetAfterVAPACalls()
 			# print "ok8"
 	idval=1
-	while os.path.exists("%s-JOP_CHAINS-%s.txt" % (peName, idval)):
+	while os.path.exists("%s%s-JOP_CHAINS-%s.txt" % (directory, peName, idval)):
 	    idval += 1
-	filename = peName +"-JOP_CHAINS-" + str(idval) + ".txt"
+	filename = directory + peName +"-JOP_CHAINS-" + str(idval) + ".txt"
 	# print outVP
 	# print outVA
 	with open(filename, 'a') as f:
@@ -13709,16 +13976,19 @@ def testtest3():
 
 		#s1, s2=getStackPivotAsLists(NumOpsD, Reg)
 
-def get_OP_RET( numOps):
+def get_OP_RET(NumOpsDis):
 	global o
-	while numOps > 6:   # Num of Ops to go back
-		t=0;		
-		for v in objs[o].data2:
-			test = ord(OP_RET[0])
-			if (ord(objs[o].data2[t]) == test):
-						disHereRet(t, numOps)
-			t=t+1
-		numOps = numOps -1
+	# while numOps > 2:   # Num of Ops to go back
+	t=0;		
+	for v in objs[o].data2:
+		test = ord(OP_RET[0])
+		if (ord(objs[o].data2[t]) == test):
+			numOps = NumOpsDis
+			while numOps > 2:
+				disHereRet(t, numOps)
+				numOps = numOps - 1
+		t=t+1
+		# numOps = numOps -1
 	objs[o].listOP_RET = copy.copy(listOP_Base)
 	objs[o].listOP_RET_CNT = copy.copy(listOP_Base_CNT)
 	objs[o].listOP_RET_NumOps = copy.copy(listOP_Base_NumOps)
@@ -13729,9 +13999,2583 @@ def get_OP_RET( numOps):
 	listOP_Base_NumOps[:] = []
 	listOP_Base_Module[:] = []
 
-def get_OP_JMP_EAX( NumOpsDis):
+
+
+
+############################ AUSTIN ##################################
+
+
+
+
+def get_OP_SPECIFIC(NumOpsDis):
+	global o
+	# print "numOps = " + str(NumOpsDis)
+	numOps = NumOpsDis
+
+	regBools = [False, False, False, False, False, False, False, False]
+	for reg in Regs:
+		if reg == "EAX":
+			regBools[0] = True
+		if reg == "EBX":
+			regBools[1] = True
+		if reg == "ECX":
+			regBools[2] = True
+		if reg == "EDX":
+			regBools[3] = True
+		if reg == "EDI":
+			regBools[4] = True
+		if reg == "ESI":
+			regBools[5] = True
+		if reg == "EBP":
+			regBools[6] = True
+		if reg == "ESP":
+			regBools[7] = True
+
+	while numOps > 2:   # Num of Ops to go back
+		t=0;		
+		for v in objs[o].data2:
+
+
+			if(regBools[0]):
+				#eax
+				test = ord(OP_JMP_EAX[0])
+				test2 = ord(OP_JMP_EAX[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+							#print("sending eax")
+							disHereJmp(t, numOps, "ALL", "eax")
+
+				test = ord(OP_JMP_PTR_EAX[0])
+				test2 = ord(OP_JMP_PTR_EAX[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJMPPTR(t, numOps, "all", "eax")
+						disHereJMPPTR2(t, numOps, "all", "eax")
+						clearGOuts()
+
+				test = ord(OTHER_JMP_PTR_EAX_SHORT[0])
+				test2 = ord(OTHER_JMP_PTR_EAX_SHORT[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJMPPTR2(t, numOps, "all", "eax_short")
+
+				test = ord(OP_CALL_EAX[0])
+				test2 = ord(OP_CALL_EAX[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						# #print("sending eax")
+						disHereCall(t, numOps, "ALL", "eax")
+
+				test = ord(OP_CALL_PTR_EAX[0])
+				test2 = ord(OP_CALL_PTR_EAX[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						# #print("sending eax")
+						disHereCALLPTR(t, numOps, "ALL", "eax")
+
+
+			if(regBools[1]):
+				#ebx
+				test = ord(OP_JMP_EBX[0])
+				test2 = ord(OP_JMP_EBX[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJmp(t, numOps, "ALL", "ebx")
+
+				test = ord(OP_JMP_PTR_EBX[0])
+				test2 = ord(OP_JMP_PTR_EBX[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJMPPTR(t, numOps, "all", "ebx")
+						disHereJMPPTR2(t, numOps, "all", "ebx")
+						clearGOuts()
+
+				test = ord(OTHER_JMP_PTR_EBX_SHORT[0])
+				test2 = ord(OTHER_JMP_PTR_EBX_SHORT[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJMPPTR2(t, numOps, "all", "ebx_short")
+
+				test = ord(OP_CALL_EBX[0])
+				test2 = ord(OP_CALL_EBX[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereCall(t, numOps, "ALL", "ebx")
+
+				test = ord(OP_CALL_PTR_EBX[0])
+				test2 = ord(OP_CALL_PTR_EBX[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereCALLPTR(t, numOps, "ALL", "ebx")
+
+
+			if(regBools[2]):
+				#ecx
+				test = ord(OP_JMP_ECX[0])
+				test2 = ord(OP_JMP_ECX[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						#print("sending ecx")
+						disHereJmp(t, numOps, "ALL", "ecx")
+
+				test = ord(OP_JMP_PTR_ECX[0])
+				test2 = ord(OP_JMP_PTR_ECX[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJMPPTR(t, numOps, "all", "ecx")
+						disHereJMPPTR2(t, numOps, "all", "ecx")
+						clearGOuts()
+
+				test = ord(OTHER_JMP_PTR_ECX_SHORT[0])
+				test2 = ord(OTHER_JMP_PTR_ECX_SHORT[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJMPPTR2(t, numOps, "all", "ecx_short")
+
+				test = ord(OP_CALL_ECX[0])
+				test2 = ord(OP_CALL_ECX[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						# #print("sending ecx")
+						disHereCall(t, numOps, "ALL", "ecx")
+
+				test = ord(OP_CALL_PTR_ECX[0])
+				test2 = ord(OP_CALL_PTR_ECX[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						# #print("sending ecx")
+						disHereCALLPTR(t, numOps, "ALL", "ecx")
+
+
+
+			if(regBools[3]):
+				#edx
+				test = ord(OP_JMP_EDX[0])
+				test2 = ord(OP_JMP_EDX[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJmp(t, numOps, "ALL", "edx")
+
+				test = ord(OP_JMP_PTR_EDX[0])
+				test2 = ord(OP_JMP_PTR_EDX[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJMPPTR(t, numOps, "all", "edx")
+						disHereJMPPTR2(t, numOps, "all", "edx")
+						clearGOuts()
+
+				test = ord(OTHER_JMP_PTR_EDX_SHORT[0])
+				test2 = ord(OTHER_JMP_PTR_EDX_SHORT[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJMPPTR2(t, numOps, "all", "edx_short")
+
+				test = ord(OP_CALL_EDX[0])
+				test2 = ord(OP_CALL_EDX[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereCall(t, numOps, "ALL", "edx")
+
+				test = ord(OP_CALL_PTR_EDX[0])
+				test2 = ord(OP_CALL_PTR_EDX[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereCALLPTR(t, numOps, "ALL", "edx")
+	
+
+
+			if(regBools[4]):
+				#edi
+				test = ord(OP_JMP_EDI[0])
+				test2 = ord(OP_JMP_EDI[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJmp(t, numOps, "ALL", "edi")
+
+				test = ord(OP_JMP_PTR_EDI[0])
+				test2 = ord(OP_JMP_PTR_EDI[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJMPPTR(t, numOps, "all", "edi")
+						disHereJMPPTR2(t, numOps, "all", "edi")
+						clearGOuts()
+
+				test = ord(OTHER_JMP_PTR_EDI_SHORT[0])
+				test2 = ord(OTHER_JMP_PTR_EDI_SHORT[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJMPPTR2(t, numOps, "all", "edi_short")
+
+				test = ord(OP_CALL_EDI[0])
+				test2 = ord(OP_CALL_EDI[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereCall(t, numOps, "ALL", "edi")
+
+				test = ord(OP_CALL_PTR_EDI[0])
+				test2 = ord(OP_CALL_PTR_EDI[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereCALLPTR(t, numOps, "ALL", "edi")
+
+
+
+			if(regBools[5]):
+				#esi
+				test = ord(OP_JMP_ESI[0])
+				test2 = ord(OP_JMP_ESI[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJmp(t, numOps, "ALL", "esi")
+
+				test = ord(OP_JMP_PTR_ESI[0])
+				test2 = ord(OP_JMP_PTR_ESI[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJMPPTR(t, numOps, "all", "esi")
+						disHereJMPPTR2(t, numOps, "all", "esi")
+						clearGOuts()
+
+				test = ord(OTHER_JMP_PTR_ESI_SHORT[0])
+				test2 = ord(OTHER_JMP_PTR_ESI_SHORT[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJMPPTR2(t, numOps, "all", "esi_short")
+
+				test = ord(OP_CALL_ESI[0])
+				test2 = ord(OP_CALL_ESI[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereCall(t, numOps, "ALL", "esi")
+
+				test = ord(OP_CALL_PTR_ESI[0])
+				test2 = ord(OP_CALL_PTR_ESI[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereCALLPTR(t, numOps, "ALL", "esi")
+
+
+			if(regBools[6]):
+				#ebp
+				test = ord(OP_JMP_EBP[0])
+				test2 = ord(OP_JMP_EBP[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJmp(t, numOps, "ALL", "ebp")
+
+				test = ord(OP_JMP_PTR_EBP[0])
+				test2 = ord(OP_JMP_PTR_EBP[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJMPPTR(t, numOps, "all", "ebp")
+						disHereJMPPTR2(t, numOps, "all", "ebp")
+						clearGOuts()
+
+				test = ord(OTHER_JMP_PTR_EBP_SHORT[0])
+				test2 = ord(OTHER_JMP_PTR_EBP_SHORT[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJMPPTR2(t, numOps, "all", "ebp_short")
+
+				test = ord(OP_CALL_EBP[0])
+				test2 = ord(OP_CALL_EBP[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereCall(t, numOps, "ALL", "ebp")
+
+				test = ord(OP_CALL_PTR_EBP[0])
+				test2 = ord(OP_CALL_PTR_EBP[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereCALLPTR(t, numOps, "ALL", "ebp")
+
+
+			if(regBools[7]):
+				#esp
+				test = ord(OP_JMP_ESP[0])
+				test2 = ord(OP_JMP_ESP[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJmp(t, numOps, "ALL", "esp")
+
+				test = ord(OP_JMP_PTR_ESP[0])
+				test2 = ord(OP_JMP_PTR_ESP[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJMPPTR(t, numOps, "all", "esp")
+						disHereJMPPTR2(t, numOps, "all", "esp")
+						clearGOuts()
+
+				test = ord(OTHER_JMP_PTR_ESP_SHORT[0])
+				test2 = ord(OTHER_JMP_PTR_ESP_SHORT[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJMPPTR2(t, numOps, "all", "esp_short")
+
+				test = ord(OP_CALL_ESP[0])
+				test2 = ord(OP_CALL_ESP[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereCall(t, numOps, "ALL", "esp")
+
+				test = ord(OP_CALL_PTR_ESP[0])
+				test2 = ord(OP_CALL_PTR_ESP[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereCALLPTR(t, numOps, "ALL", "esp")
+
+
+
+
+
+			t=t+1
+		numOps = numOps -1
+	# print "specAnswer"
+	# print len(listOP_Base)	
+
+	# ok=raw_input()
+
+
+	listOP_Base_CNT[:] = []
+	listOP_Base[:] = []
+	listOP_Base_NumOps[:] = []
+	listOP_Base_Module[:] = []
+
+# disHereCall(t, numOps, "ALL", "eax")
+# def newFunc(t, numOps, reg):
+# 	while numOps > 2:
+# 		disHereCall(t, numOps, "ALL", reg)
+# 		numOps = numOps - 1 
+
+
+
+def get_OP_ALL_CALL_old(NumOpsDis):
 	global o
 
+	# print "numOps = " + str(NumOpsDis)
+
+	regBools = [False, False, False, False, False, False, False, False]
+	for reg in Regs:
+		if reg == "ALL":
+			regBools[0] = True
+			regBools[1] = True
+			regBools[2] = True
+			regBools[3] = True
+			regBools[4] = True
+			regBools[5] = True
+			regBools[6] = True
+			regBools[7] = True
+			break
+		if reg == "EAX":
+			regBools[0] = True
+		if reg == "EBX":
+			regBools[1] = True
+		if reg == "ECX":
+			regBools[2] = True
+		if reg == "EDX":
+			regBools[3] = True
+		if reg == "EDI":
+			regBools[4] = True
+		if reg == "ESI":
+			regBools[5] = True
+		if reg == "EBP":
+			regBools[6] = True
+		if reg == "ESP":
+			regBools[7] = True
+
+	numOps = NumOpsDis
+
+	totalSize = numOps * len(objs[o].data2)	
+	interval = totalSize // 5
+	curInterval = interval
+	while numOps > 2:   # Num of Ops to go back
+		t=0;	
+		for v in objs[o].data2:
+
+
+			test = ord(OP_CALL_EAX[0])
+			if (ord(objs[o].data2[t]) == test):
+		#eax
+				if(regBools[0]):
+					# test = ord(OP_CALL_EAX[0])
+						test2 = ord(OP_CALL_EAX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							# #print("sending eax")
+							disHereCall(t, numOps, "ALL", "eax")
+
+				#ebx
+				if(regBools[1]):
+					# test = ord(OP_CALL_EBX[0])
+						test2 = ord(OP_CALL_EBX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCall(t, numOps, "ALL", "ebx")
+
+				#ecx
+				if(regBools[2]):
+					# test = ord(OP_CALL_ECX[0])
+						test2 = ord(OP_CALL_ECX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							# #print("sending ecx")
+							disHereCall(t, numOps, "ALL", "ecx")
+
+				#edx
+				if(regBools[3]):
+					# test = ord(OP_CALL_EDX[0])
+						test2 = ord(OP_CALL_EDX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCall(t, numOps, "ALL", "edx")
+
+
+				#edi
+				if(regBools[4]):
+					# test = ord(OP_CALL_EDI[0])
+						test2 = ord(OP_CALL_EDI[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCall(t, numOps, "ALL", "edi")
+
+				#esi
+				if(regBools[5]):
+					# test = ord(OP_CALL_ESI[0])
+						test2 = ord(OP_CALL_ESI[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCall(t, numOps, "ALL", "esi")
+
+				#ebp
+				if(regBools[6]):
+					# test = ord(OP_CALL_EBP[0])
+						test2 = ord(OP_CALL_EBP[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCall(t, numOps, "ALL", "ebp")
+
+				#esp
+				if(regBools[7]):
+					# test = ord(OP_CALL_ESP[0])
+						test2 = ord(OP_CALL_ESP[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCall(t, numOps, "ALL", "esp")
+
+				##################### CALL PTR #######################
+
+				#eax
+				if(regBools[0]):
+					# test = ord(OP_CALL_PTR_EAX[0])
+						test2 = ord(OP_CALL_PTR_EAX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							# #print("sending eax")
+							disHereCALLPTR(t, numOps, "ALL", "eax")
+
+				#ebx
+				if(regBools[1]):
+					# test = ord(OP_CALL_PTR_EBX[0])
+						test2 = ord(OP_CALL_PTR_EBX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCALLPTR(t, numOps, "ALL", "ebx")
+
+				#ecx
+				if(regBools[2]):
+					# test = ord(OP_CALL_PTR_ECX[0])
+						test2 = ord(OP_CALL_PTR_ECX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							# #print("sending ecx")
+							disHereCALLPTR(t, numOps, "ALL", "ecx")
+
+				#edx
+				if(regBools[3]):
+					# test = ord(OP_CALL_PTR_EDX[0])
+						test2 = ord(OP_CALL_PTR_EDX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCALLPTR(t, numOps, "ALL", "edx")
+
+
+				#edi
+				if(regBools[4]):
+					# test = ord(OP_CALL_PTR_EDI[0])
+						test2 = ord(OP_CALL_PTR_EDI[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCALLPTR(t, numOps, "ALL", "edi")
+
+				#esi
+				if(regBools[5]):
+					# test = ord(OP_CALL_PTR_ESI[0])
+						test2 = ord(OP_CALL_PTR_ESI[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCALLPTR(t, numOps, "ALL", "esi")
+
+				#ebp
+				if(regBools[6]):
+					# test = ord(OP_CALL_PTR_EBP[0])
+						test2 = ord(OP_CALL_PTR_EBP[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCALLPTR(t, numOps, "ALL", "ebp")
+
+				#esp
+				if(regBools[7]):
+					# test = ord(OP_CALL_PTR_ESP[0])
+						test2 = ord(OP_CALL_PTR_ESP[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCALLPTR(t, numOps, "ALL", "esp")
+
+
+
+
+			if(t == curInterval):
+				curInterval = curInterval + interval
+				amount = curInterval/totalSize * 100
+				print(str(amount) + "% Complete")
+			# 	print("t = " + str(t))
+			# 	print("interval = " + str(interval))
+			# 	print("curInterval = " + str(curInterval))
+			# t=t+1
+		numOps = numOps -1
+	# print "specAnswer"
+	# print len(listOP_Base)	
+
+	# ok=raw_input()
+
+
+	listOP_Base_CNT[:] = []
+	listOP_Base[:] = []
+	listOP_Base_NumOps[:] = []
+	listOP_Base_Module[:] = []
+
+
+def get_OP_ALL_CALL(NumOpsDis):
+	global o
+
+	# print "numOps = " + str(NumOpsDis)
+
+	regBools = [False, False, False, False, False, False, False, False]
+	for reg in Regs:
+		if reg == "ALL":
+			regBools[0] = True
+			regBools[1] = True
+			regBools[2] = True
+			regBools[3] = True
+			regBools[4] = True
+			regBools[5] = True
+			regBools[6] = True
+			regBools[7] = True
+			break
+		if reg == "EAX":
+			regBools[0] = True
+		if reg == "EBX":
+			regBools[1] = True
+		if reg == "ECX":
+			regBools[2] = True
+		if reg == "EDX":
+			regBools[3] = True
+		if reg == "EDI":
+			regBools[4] = True
+		if reg == "ESI":
+			regBools[5] = True
+		if reg == "EBP":
+			regBools[6] = True
+		if reg == "ESP":
+			regBools[7] = True
+
+	numOps = NumOpsDis
+
+	totalSize = len(objs[o].data2)	
+	interval = totalSize / 5
+	curInterval = 0
+	# while numOps > 2:   # Num of Ops to go back
+	t=0;	
+	for v in objs[o].data2:
+		# print(t)
+
+		test = ord(OP_CALL_EAX[0])
+		if (ord(objs[o].data2[t]) == test):
+	#eax
+			if(regBools[0]):
+				# test = ord(OP_CALL_EAX[0])
+					test2 = ord(OP_CALL_EAX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						# print("sending eax")
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCall(t, numOps, "ALL", "eax")
+							numOps = numOps - 1
+
+			#ebx
+			if(regBools[1]):
+				# test = ord(OP_CALL_EBX[0])
+					test2 = ord(OP_CALL_EBX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCall(t, numOps, "ALL", "ebx")
+							numOps = numOps - 1
+
+			#ecx
+			if(regBools[2]):
+				# test = ord(OP_CALL_ECX[0])
+					test2 = ord(OP_CALL_ECX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						# #print("sending ecx")
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCall(t, numOps, "ALL", "ecx")
+							numOps = numOps - 1
+
+			#edx
+			if(regBools[3]):
+				# test = ord(OP_CALL_EDX[0])
+					test2 = ord(OP_CALL_EDX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCall(t, numOps, "ALL", "edx")
+							numOps = numOps - 1
+
+
+			#edi
+			if(regBools[4]):
+				# test = ord(OP_CALL_EDI[0])
+					test2 = ord(OP_CALL_EDI[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCall(t, numOps, "ALL", "edi")
+							numOps = numOps - 1
+
+			#esi
+			if(regBools[5]):
+				# test = ord(OP_CALL_ESI[0])
+					test2 = ord(OP_CALL_ESI[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCall(t, numOps, "ALL", "esi")
+							numOps = numOps - 1
+
+			#ebp
+			if(regBools[6]):
+				# test = ord(OP_CALL_EBP[0])
+					test2 = ord(OP_CALL_EBP[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCall(t, numOps, "ALL", "ebp")
+							numOps = numOps - 1
+
+			#esp
+			if(regBools[7]):
+				# test = ord(OP_CALL_ESP[0])
+					test2 = ord(OP_CALL_ESP[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCall(t, numOps, "ALL", "esp")
+							numOps = numOps - 1
+
+			##################### CALL PTR #######################
+
+			#eax
+			if(regBools[0]):
+				# test = ord(OP_CALL_PTR_EAX[0])
+					test2 = ord(OP_CALL_PTR_EAX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						# #print("sending eax")
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCALLPTR(t, numOps, "ALL", "eax")
+							numOps = numOps - 1
+
+			#ebx
+			if(regBools[1]):
+				# test = ord(OP_CALL_PTR_EBX[0])
+					test2 = ord(OP_CALL_PTR_EBX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCALLPTR(t, numOps, "ALL", "ebx")
+							numOps = numOps - 1
+
+			#ecx
+			if(regBools[2]):
+				# test = ord(OP_CALL_PTR_ECX[0])
+					test2 = ord(OP_CALL_PTR_ECX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						# #print("sending ecx")
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCALLPTR(t, numOps, "ALL", "ecx")
+							numOps = numOps - 1
+
+			#edx
+			if(regBools[3]):
+				# test = ord(OP_CALL_PTR_EDX[0])
+					test2 = ord(OP_CALL_PTR_EDX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCALLPTR(t, numOps, "ALL", "edx")
+							numOps = numOps - 1
+
+
+			#edi
+			if(regBools[4]):
+				# test = ord(OP_CALL_PTR_EDI[0])
+					test2 = ord(OP_CALL_PTR_EDI[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCALLPTR(t, numOps, "ALL", "edi")
+							numOps = numOps - 1
+
+			#esi
+			if(regBools[5]):
+				# test = ord(OP_CALL_PTR_ESI[0])
+					test2 = ord(OP_CALL_PTR_ESI[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCALLPTR(t, numOps, "ALL", "esi")
+							numOps = numOps - 1
+
+			#ebp
+			if(regBools[6]):
+				# test = ord(OP_CALL_PTR_EBP[0])
+					test2 = ord(OP_CALL_PTR_EBP[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCALLPTR(t, numOps, "ALL", "ebp")
+							numOps = numOps - 1
+
+			#esp
+			if(regBools[7]):
+				# test = ord(OP_CALL_PTR_ESP[0])
+					test2 = ord(OP_CALL_PTR_ESP[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCALLPTR(t, numOps, "ALL", "esp")
+							numOps = numOps - 1
+
+
+
+
+		if(t == curInterval):
+			amount = float(curInterval)/float(totalSize) * 100
+			print(str(math.ceil(int(amount))) + "% Complete")
+			# print("t = " + str(t))
+			# print("interval = " + str(interval))
+			# print("curInterval = " + str(curInterval))
+			curInterval = curInterval + interval
+		t=t+1
+		# numOps = numOps -1
+	print ("Completed scanning of binary, CALL")
+	# print "specAnswer"
+	# print len(listOP_Base)	
+
+	# ok=raw_input()
+
+
+	listOP_Base_CNT[:] = []
+	listOP_Base[:] = []
+	listOP_Base_NumOps[:] = []
+	listOP_Base_Module[:] = []
+
+
+
+def get_OP_ALL_JMP_old(NumOpsDis):
+	global o
+	# print "numOps = " + str(NumOpsDis)
+	# print(Regs)
+	numOps = NumOpsDis
+	regBools = [False, False, False, False, False, False, False, False]
+	for reg in Regs:
+		if reg == "ALL":
+			regBools[0] = True
+			regBools[1] = True
+			regBools[2] = True
+			regBools[3] = True
+			regBools[4] = True
+			regBools[5] = True
+			regBools[6] = True
+			regBools[7] = True
+			break
+
+		if reg == "EAX":
+			regBools[0] = True
+		if reg == "EBX":
+			regBools[1] = True
+		if reg == "ECX":
+			regBools[2] = True
+		if reg == "EDX":
+			regBools[3] = True
+		if reg == "EDI":
+			regBools[4] = True
+		if reg == "ESI":
+			regBools[5] = True
+		if reg == "EBP":
+			regBools[6] = True
+		if reg == "ESP":
+			regBools[7] = True
+	while numOps > 2:   # Num of Ops to go back
+		t=0;		
+		for v in objs[o].data2:
+			###################### JMP #########################
+			#eax
+
+
+			test = ord(OP_JMP_EAX[0])
+			if (ord(objs[o].data2[t]) == test):
+				if(regBools[0]):
+						test2 = ord(OP_JMP_EAX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+								#print("sending eax")
+								disHereJmp(t, numOps, "ALL", "eax")
+
+				#ebx
+				if(regBools[1]):
+					# test = ord(OP_JMP_EBX[0])
+						test2 = ord(OP_JMP_EBX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJmp(t, numOps, "ALL", "ebx")
+
+				#ecx
+				if(regBools[2]):
+					# test = ord(OP_JMP_ECX[0])
+						test2 = ord(OP_JMP_ECX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							#print("sending ecx")
+							disHereJmp(t, numOps, "ALL", "ecx")
+
+				#edx
+				if(regBools[3]):
+					# test = ord(OP_JMP_EDX[0])
+						test2 = ord(OP_JMP_EDX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJmp(t, numOps, "ALL", "edx")
+
+
+				#edi
+				if(regBools[4]):
+					# test = ord(OP_JMP_EDI[0])
+						test2 = ord(OP_JMP_EDI[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJmp(t, numOps, "ALL", "edi")
+
+				#esi
+				if(regBools[5]):
+					# test = ord(OP_JMP_ESI[0])
+						test2 = ord(OP_JMP_ESI[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJmp(t, numOps, "ALL", "esi")
+
+				#ebp
+				if(regBools[6]):
+					# test = ord(OP_JMP_EBP[0])
+						test2 = ord(OP_JMP_EBP[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJmp(t, numOps, "ALL", "ebp")
+
+				#esp
+				if(regBools[7]):
+					# test = ord(OP_JMP_ESP[0])
+						test2 = ord(OP_JMP_ESP[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJmp(t, numOps, "ALL", "esp")
+
+				####################### JMP PTR #########################
+
+				if(regBools[0]):
+					# test = ord(OP_JMP_PTR_EAX[0])
+						test2 = ord(OP_JMP_PTR_EAX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR(t, numOps, "all", "eax")
+							disHereJMPPTR2(t, numOps, "all", "eax")
+							clearGOuts()
+
+					# test = ord(OTHER_JMP_PTR_EAX_SHORT[0])
+						test2 = ord(OTHER_JMP_PTR_EAX_SHORT[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR2(t, numOps, "all", "eax_short")
+
+				if(regBools[1]):
+					# test = ord(OP_JMP_PTR_EBX[0])
+						test2 = ord(OP_JMP_PTR_EBX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR(t, numOps, "all", "ebx")
+							disHereJMPPTR2(t, numOps, "all", "ebx")
+							clearGOuts()
+
+					# test = ord(OTHER_JMP_PTR_EBX_SHORT[0])
+						test2 = ord(OTHER_JMP_PTR_EBX_SHORT[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR2(t, numOps, "all", "ebx_short")
+
+
+				if(regBools[2]):
+					# test = ord(OP_JMP_PTR_ECX[0])
+						test2 = ord(OP_JMP_PTR_ECX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR(t, numOps, "all", "ecx")
+							disHereJMPPTR2(t, numOps, "all", "ecx")
+							clearGOuts()
+
+					# test = ord(OTHER_JMP_PTR_ECX_SHORT[0])
+						test2 = ord(OTHER_JMP_PTR_ECX_SHORT[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR2(t, numOps, "all", "ecx_short")
+
+				if(regBools[3]):
+					# test = ord(OP_JMP_PTR_EDX[0])
+						test2 = ord(OP_JMP_PTR_EDX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR(t, numOps, "all", "edx")
+							disHereJMPPTR2(t, numOps, "all", "edx")
+							clearGOuts()
+
+					# test = ord(OTHER_JMP_PTR_EDX_SHORT[0])
+						test2 = ord(OTHER_JMP_PTR_EDX_SHORT[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR2(t, numOps, "all", "edx_short")
+
+				if(regBools[4]):
+					# test = ord(OP_JMP_PTR_EDI[0])
+						test2 = ord(OP_JMP_PTR_EDI[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR(t, numOps, "all", "edi")
+							disHereJMPPTR2(t, numOps, "all", "edi")
+							clearGOuts()
+
+					# test = ord(OTHER_JMP_PTR_EDI_SHORT[0])
+						test2 = ord(OTHER_JMP_PTR_EDI_SHORT[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR2(t, numOps, "all", "edi_short")
+
+				if(regBools[5]):
+					# test = ord(OP_JMP_PTR_ESI[0])
+						test2 = ord(OP_JMP_PTR_ESI[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR(t, numOps, "all", "esi")
+							disHereJMPPTR2(t, numOps, "all", "esi")
+							clearGOuts()
+
+					# test = ord(OTHER_JMP_PTR_ESI_SHORT[0])
+						test2 = ord(OTHER_JMP_PTR_ESI_SHORT[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR2(t, numOps, "all", "esi_short")
+
+				if(regBools[6]):
+					# test = ord(OP_JMP_PTR_EBP[0])
+						test2 = ord(OP_JMP_PTR_EBP[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR(t, numOps, "all", "ebp")
+							disHereJMPPTR2(t, numOps, "all", "ebp")
+							clearGOuts()
+
+					# test = ord(OTHER_JMP_PTR_EBP_SHORT[0])
+						test2 = ord(OTHER_JMP_PTR_EBP_SHORT[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR2(t, numOps, "all", "ebp_short")
+
+				if(regBools[7]):
+					# test = ord(OP_JMP_PTR_ESP[0])
+						test2 = ord(OP_JMP_PTR_ESP[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR(t, numOps, "all", "esp")
+							disHereJMPPTR2(t, numOps, "all", "esp")
+							clearGOuts()
+
+					# test = ord(OTHER_JMP_PTR_ESP_SHORT[0])
+						test2 = ord(OTHER_JMP_PTR_ESP_SHORT[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR2(t, numOps, "all", "esp_short")
+
+
+			
+
+
+			
+
+			
+
+			
+
+			
+
+
+
+			
+
+			
+
+
+
+			t=t+1
+		numOps = numOps -1
+	# print "specAnswer"
+	# print len(listOP_Base)	
+
+	# ok=raw_input()
+
+
+	listOP_Base_CNT[:] = []
+	listOP_Base[:] = []
+	listOP_Base_NumOps[:] = []
+	listOP_Base_Module[:] = []
+
+def get_OP_ALL_JMP(NumOpsDis):
+	global o
+	# print "numOps = " + str(NumOpsDis)
+	# print(Regs)
+	numOps = NumOpsDis
+	regBools = [False, False, False, False, False, False, False, False]
+	for reg in Regs:
+		if reg == "ALL":
+			regBools[0] = True
+			regBools[1] = True
+			regBools[2] = True
+			regBools[3] = True
+			regBools[4] = True
+			regBools[5] = True
+			regBools[6] = True
+			regBools[7] = True
+			break
+
+		if reg == "EAX":
+			regBools[0] = True
+		if reg == "EBX":
+			regBools[1] = True
+		if reg == "ECX":
+			regBools[2] = True
+		if reg == "EDX":
+			regBools[3] = True
+		if reg == "EDI":
+			regBools[4] = True
+		if reg == "ESI":
+			regBools[5] = True
+		if reg == "EBP":
+			regBools[6] = True
+		if reg == "ESP":
+			regBools[7] = True
+	
+
+
+
+		# if (ord(objs[o].data2[t+1]) == test2):
+# 						# print("sending eax")
+# 						numOps = NumOpsDis
+# 						while numOps > 2:
+# 							disHereCall(t, numOps, "ALL", "eax")
+# 							numOps = numOps - 1
+
+	totalSize = len(objs[o].data2)	
+	interval = totalSize / 5
+	curInterval = 0
+	t=0;		
+	for v in objs[o].data2:
+		###################### JMP #########################
+		#eax
+		# print("t = " + str(t))
+		# numOps = NumOpsDis
+		test = ord(OP_JMP_EAX[0])
+		if (ord(objs[o].data2[t]) == test):
+			
+			if(regBools[0]):
+					test2 = ord(OP_JMP_EAX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							# print("in numops")
+							disHereJmp(t, numOps, "ALL", "eax")
+							numOps = numOps - 1
+
+
+			#ebx
+			if(regBools[1]):
+				# test = ord(OP_JMP_EBX[0])
+					test2 = ord(OP_JMP_EBX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJmp(t, numOps, "ALL", "ebx")
+							numOps = numOps - 1
+
+			#ecx
+			if(regBools[2]):
+				# test = ord(OP_JMP_ECX[0])
+					test2 = ord(OP_JMP_ECX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJmp(t, numOps, "ALL", "ecx")
+							numOps = numOps - 1
+
+			#edx
+			if(regBools[3]):
+				# test = ord(OP_JMP_EDX[0])
+					test2 = ord(OP_JMP_EDX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJmp(t, numOps, "ALL", "edx")
+							numOps = numOps - 1
+
+
+			#edi
+			if(regBools[4]):
+				# test = ord(OP_JMP_EDI[0])
+					test2 = ord(OP_JMP_EDI[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJmp(t, numOps, "ALL", "edi")
+							numOps = numOps - 1
+
+			#esi
+			if(regBools[5]):
+				# test = ord(OP_JMP_ESI[0])
+					test2 = ord(OP_JMP_ESI[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJmp(t, numOps, "ALL", "esi")
+							numOps = numOps - 1
+
+			#ebp
+			if(regBools[6]):
+				# test = ord(OP_JMP_EBP[0])
+					test2 = ord(OP_JMP_EBP[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJmp(t, numOps, "ALL", "ebp")
+							numOps = numOps - 1
+
+			#esp
+			if(regBools[7]):
+				# test = ord(OP_JMP_ESP[0])
+					test2 = ord(OP_JMP_ESP[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJmp(t, numOps, "ALL", "esp")
+							numOps = numOps - 1
+
+			####################### JMP PTR #########################
+
+			if(regBools[0]):
+				# test = ord(OP_JMP_PTR_EAX[0])
+				test2 = ord(OP_JMP_PTR_EAX[1])
+
+				if (ord(objs[o].data2[t+1]) == test2):
+					# print("test2")
+					numOps = NumOpsDis
+					while numOps > 2:
+						disHereJMPPTR(t, numOps, "all", "eax")
+						numOps = numOps - 1
+					clearGOuts()
+					numOps = 4
+					while numOps > 1:
+						disHereJMPPTR2(t, numOps, "all", "eax")
+						numOps = numOps - 1
+					clearGOuts()
+
+			# test = ord(OTHER_JMP_PTR_EAX_SHORT[0])
+				test2 = ord(OTHER_JMP_PTR_EAX_SHORT[1])
+
+				if (ord(objs[o].data2[t+1]) == test2):
+					numOps = NumOpsDis
+					while numOps > 2:
+						# # print "gots one"
+						disHereJMPPTR2(t, numOps, "all", "eax_short")
+						numOps = numOps - 1
+
+			if(regBools[1]):
+				# test = ord(OP_JMP_PTR_EBX[0])
+					test2 = ord(OP_JMP_PTR_EBX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR(t, numOps, "all", "ebx")
+							numOps = numOps - 1
+						clearGOuts()
+						numOps = 4
+						while numOps > 1:
+							disHereJMPPTR2(t, numOps, "all", "ebx")
+							numOps = numOps - 1
+						clearGOuts()
+
+				# test = ord(OTHER_JMP_PTR_EBX_SHORT[0])
+					test2 = ord(OTHER_JMP_PTR_EBX_SHORT[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							# print "gots one2"
+							disHereJMPPTR2(t, numOps, "all", "ebx_short")
+							numOps = numOps - 1
+
+
+			if(regBools[2]):
+				# test = ord(OP_JMP_PTR_ECX[0])
+					test2 = ord(OP_JMP_PTR_ECX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR(t, numOps, "all", "ecx")
+							numOps = numOps - 1
+						clearGOuts()
+						numOps = 4
+						while numOps > 1:
+							disHereJMPPTR2(t, numOps, "all", "ecx")
+							numOps = numOps - 1
+						clearGOuts()
+
+				# test = ord(OTHER_JMP_PTR_ECX_SHORT[0])
+					test2 = ord(OTHER_JMP_PTR_ECX_SHORT[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							# print "gots one3"
+							disHereJMPPTR2(t, numOps, "all", "ecx_short")
+							numOps = numOps - 1
+
+			if(regBools[3]):
+				# test = ord(OP_JMP_PTR_EDX[0])
+					test2 = ord(OP_JMP_PTR_EDX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR(t, numOps, "all", "edx")
+							numOps = numOps - 1
+						clearGOuts()
+						numOps = 4
+						while numOps > 1:
+							disHereJMPPTR2(t, numOps, "all", "edx")
+							numOps = numOps - 1
+						clearGOuts()
+
+				# test = ord(OTHER_JMP_PTR_EDX_SHORT[0])
+					test2 = ord(OTHER_JMP_PTR_EDX_SHORT[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							# print "gots one3"
+							disHereJMPPTR2(t, numOps, "all", "edx_short")
+							numOps = numOps - 1
+
+			if(regBools[4]):
+				# test = ord(OP_JMP_PTR_EDI[0])
+					test2 = ord(OP_JMP_PTR_EDI[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR(t, numOps, "all", "edi")
+							numOps = numOps - 1
+						clearGOuts()
+						numOps = 4
+						while numOps > 1:
+							disHereJMPPTR2(t, numOps, "all", "edi")
+							numOps = numOps - 1
+						clearGOuts()
+
+				# test = ord(OTHER_JMP_PTR_EDI_SHORT[0])
+					test2 = ord(OTHER_JMP_PTR_EDI_SHORT[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							# print "gots one5"
+							disHereJMPPTR2(t, numOps, "all", "edi_short")
+							numOps = numOps - 1
+
+			if(regBools[5]):
+				# test = ord(OP_JMP_PTR_ESI[0])
+					test2 = ord(OP_JMP_PTR_ESI[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR(t, numOps, "all", "esi")
+							numOps = numOps - 1
+						clearGOuts()
+						numOps = 4
+						while numOps > 1:
+							disHereJMPPTR2(t, numOps, "all", "esi")
+							numOps = numOps - 1
+						clearGOuts()
+
+				# test = ord(OTHER_JMP_PTR_ESI_SHORT[0])
+					test2 = ord(OTHER_JMP_PTR_ESI_SHORT[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							# print ("gots one6", t, numOps)
+							disHereJMPPTR2(t, numOps, "all", "esi_short")
+							numOps = numOps - 1
+
+			if(regBools[6]):
+				# test = ord(OP_JMP_PTR_EBP[0])
+					test2 = ord(OP_JMP_PTR_EBP[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR(t, numOps, "all", "ebp")
+							numOps = numOps - 1
+						clearGOuts()
+						numOps = 4
+						while numOps > 1:
+							disHereJMPPTR2(t, numOps, "all", "ebp")
+							numOps = numOps - 1
+						clearGOuts()
+
+				# test = ord(OTHER_JMP_PTR_EBP_SHORT[0])
+					test2 = ord(OTHER_JMP_PTR_EBP_SHORT[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							# print "gots one7"
+							disHereJMPPTR2(t, numOps, "all", "ebp_short")
+							numOps = numOps - 1
+
+			if(regBools[7]):
+				# test = ord(OP_JMP_PTR_ESP[0])
+					test2 = ord(OP_JMP_PTR_ESP[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR(t, numOps, "all", "esp")
+							numOps = numOps - 1
+						clearGOuts()
+						numOps = 4
+						while numOps > 1:
+							disHereJMPPTR2(t, numOps, "all", "esp")
+							numOps = numOps - 1
+						clearGOuts()
+
+				# test = ord(OTHER_JMP_PTR_ESP_SHORT[0])
+					test2 = ord(OTHER_JMP_PTR_ESP_SHORT[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							# print "gots one8"
+							disHereJMPPTR2(t, numOps, "all", "esp_short")
+							numOps = numOps - 1
+		# print(numOps)
+		if(t == curInterval):
+			amount = float(curInterval)/float(totalSize) * 100
+			print(str(math.ceil(int(amount))) + "% Complete")
+			# print("t = " + str(t))
+			# print("interval = " + str(interval))
+			# print("curInterval = " + str(curInterval))
+			curInterval = curInterval + interval
+		t=t+1
+	# print "specAnswer"
+	# print len(listOP_Base)	
+
+	# ok=raw_input()
+
+	print ("Completed scanning of binary, JMP")
+	listOP_Base_CNT[:] = []
+	listOP_Base[:] = []
+	listOP_Base_NumOps[:] = []
+	listOP_Base_Module[:] = []
+
+
+def get_OP_ALL_BOTH_old(NumOpsDis):
+	global o
+	# print "numOps = " + str(NumOpsDis)
+	numOps = NumOpsDis
+
+	regBools = [False, False, False, False, False, False, False, False]
+	for reg in Regs:
+		if reg == "ALL":
+			regBools[0] = True
+			regBools[1] = True
+			regBools[2] = True
+			regBools[3] = True
+			regBools[4] = True
+			regBools[5] = True
+			regBools[6] = True
+			regBools[7] = True
+			break
+		if reg == "EAX":
+			regBools[0] = True
+		if reg == "EBX":
+			regBools[1] = True
+		if reg == "ECX":
+			regBools[2] = True
+		if reg == "EDX":
+			regBools[3] = True
+		if reg == "EDI":
+			regBools[4] = True
+		if reg == "ESI":
+			regBools[5] = True
+		if reg == "EBP":
+			regBools[6] = True
+		if reg == "ESP":
+			regBools[7] = True
+
+	while numOps > 2:   # Num of Ops to go back
+		t=0;		
+		for v in objs[o].data2:
+
+
+
+			test = ord(OP_JMP_EAX[0])
+			if (ord(objs[o].data2[t]) == test):
+					###################### JMP #########################
+				#eax
+				if(regBools[0]):
+					# test = ord(OP_JMP_EAX[0])
+						test2 = ord(OP_JMP_EAX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+								#print("sending eax")
+								disHereJmp(t, numOps, "ALL", "eax")
+
+				#ebx
+				if(regBools[1]):
+					# test = ord(OP_JMP_EBX[0])
+						test2 = ord(OP_JMP_EBX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJmp(t, numOps, "ALL", "ebx")
+
+				#ecx
+				if(regBools[2]):
+					# test = ord(OP_JMP_ECX[0])
+						test2 = ord(OP_JMP_ECX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							#print("sending ecx")
+							disHereJmp(t, numOps, "ALL", "ecx")
+
+				#edx
+				if(regBools[3]):
+					# test = ord(OP_JMP_EDX[0])
+						test2 = ord(OP_JMP_EDX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJmp(t, numOps, "ALL", "edx")
+
+
+				#edi
+				if(regBools[4]):
+					# test = ord(OP_JMP_EDI[0])
+						test2 = ord(OP_JMP_EDI[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJmp(t, numOps, "ALL", "edi")
+
+				#esi
+				if(regBools[5]):
+					# test = ord(OP_JMP_ESI[0])
+						test2 = ord(OP_JMP_ESI[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJmp(t, numOps, "ALL", "esi")
+
+				#ebp
+				if(regBools[6]):
+					# test = ord(OP_JMP_EBP[0])
+						test2 = ord(OP_JMP_EBP[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJmp(t, numOps, "ALL", "ebp")
+
+				#esp
+				if(regBools[7]):
+					# test = ord(OP_JMP_ESP[0])
+						test2 = ord(OP_JMP_ESP[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJmp(t, numOps, "ALL", "esp")
+
+				####################### JMP PTR #########################
+
+				if(regBools[0]):
+					# test = ord(OP_JMP_PTR_EAX[0])
+						test2 = ord(OP_JMP_PTR_EAX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR(t, numOps, "all", "eax")
+							disHereJMPPTR2(t, numOps, "all", "eax")
+							clearGOuts()
+
+					# test = ord(OTHER_JMP_PTR_EAX_SHORT[0])
+						test2 = ord(OTHER_JMP_PTR_EAX_SHORT[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR2(t, numOps, "all", "eax_short")
+
+				if(regBools[1]):
+					# test = ord(OP_JMP_PTR_EBX[0])
+						test2 = ord(OP_JMP_PTR_EBX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR(t, numOps, "all", "ebx")
+							disHereJMPPTR2(t, numOps, "all", "ebx")
+							clearGOuts()
+
+					# test = ord(OTHER_JMP_PTR_EBX_SHORT[0])
+						test2 = ord(OTHER_JMP_PTR_EBX_SHORT[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR2(t, numOps, "all", "ebx_short")
+
+
+				if(regBools[2]):
+					# test = ord(OP_JMP_PTR_ECX[0])
+						test2 = ord(OP_JMP_PTR_ECX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR(t, numOps, "all", "ecx")
+							disHereJMPPTR2(t, numOps, "all", "ecx")
+							clearGOuts()
+
+					# test = ord(OTHER_JMP_PTR_ECX_SHORT[0])
+						test2 = ord(OTHER_JMP_PTR_ECX_SHORT[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR2(t, numOps, "all", "ecx_short")
+
+				if(regBools[3]):
+					# test = ord(OP_JMP_PTR_EDX[0])
+						test2 = ord(OP_JMP_PTR_EDX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR(t, numOps, "all", "edx")
+							disHereJMPPTR2(t, numOps, "all", "edx")
+							clearGOuts()
+
+					# test = ord(OTHER_JMP_PTR_EDX_SHORT[0])
+						test2 = ord(OTHER_JMP_PTR_EDX_SHORT[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR2(t, numOps, "all", "edx_short")
+
+				if(regBools[4]):
+					# test = ord(OP_JMP_PTR_EDI[0])
+						test2 = ord(OP_JMP_PTR_EDI[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR(t, numOps, "all", "edi")
+							disHereJMPPTR2(t, numOps, "all", "edi")
+							clearGOuts()
+
+					# test = ord(OTHER_JMP_PTR_EDI_SHORT[0])
+						test2 = ord(OTHER_JMP_PTR_EDI_SHORT[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR2(t, numOps, "all", "edi_short")
+
+				if(regBools[5]):
+					# test = ord(OP_JMP_PTR_ESI[0])
+						test2 = ord(OP_JMP_PTR_ESI[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR(t, numOps, "all", "esi")
+							disHereJMPPTR2(t, numOps, "all", "esi")
+							clearGOuts()
+
+					# test = ord(OTHER_JMP_PTR_ESI_SHORT[0])
+						test2 = ord(OTHER_JMP_PTR_ESI_SHORT[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR2(t, numOps, "all", "esi_short")
+
+				if(regBools[6]):
+					# test = ord(OP_JMP_PTR_EBP[0])
+						test2 = ord(OP_JMP_PTR_EBP[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR(t, numOps, "all", "ebp")
+							disHereJMPPTR2(t, numOps, "all", "ebp")
+							clearGOuts()
+
+					# test = ord(OTHER_JMP_PTR_EBP_SHORT[0])
+						test2 = ord(OTHER_JMP_PTR_EBP_SHORT[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR2(t, numOps, "all", "ebp_short")
+
+				if(regBools[7]):
+					# test = ord(OP_JMP_PTR_ESP[0])
+						test2 = ord(OP_JMP_PTR_ESP[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR(t, numOps, "all", "esp")
+							disHereJMPPTR2(t, numOps, "all", "esp")
+							clearGOuts()
+
+					# test = ord(OTHER_JMP_PTR_ESP_SHORT[0])
+						test2 = ord(OTHER_JMP_PTR_ESP_SHORT[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereJMPPTR2(t, numOps, "all", "esp_short")
+
+
+				############################## CALL ###################################
+				#eax
+				if(regBools[0]):
+					# test = ord(OP_CALL_EAX[0])
+						test2 = ord(OP_CALL_EAX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							# #print("sending eax")
+							disHereCall(t, numOps, "ALL", "eax")
+
+				#ebx
+				if(regBools[1]):
+					# test = ord(OP_CALL_EBX[0])
+						test2 = ord(OP_CALL_EBX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCall(t, numOps, "ALL", "ebx")
+
+				#ecx
+				if(regBools[2]):
+					# test = ord(OP_CALL_ECX[0])
+						test2 = ord(OP_CALL_ECX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							# #print("sending ecx")
+							disHereCall(t, numOps, "ALL", "ecx")
+
+				#edx
+				if(regBools[3]):
+					# test = ord(OP_CALL_EDX[0])
+						test2 = ord(OP_CALL_EDX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCall(t, numOps, "ALL", "edx")
+
+
+				#edi
+				if(regBools[4]):
+					# test = ord(OP_CALL_EDI[0])
+						test2 = ord(OP_CALL_EDI[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCall(t, numOps, "ALL", "edi")
+
+				#esi
+				if(regBools[5]):
+					# test = ord(OP_CALL_ESI[0])
+						test2 = ord(OP_CALL_ESI[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCall(t, numOps, "ALL", "esi")
+
+				#ebp
+				if(regBools[6]):
+					# test = ord(OP_CALL_EBP[0])
+						test2 = ord(OP_CALL_EBP[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCall(t, numOps, "ALL", "ebp")
+
+				#esp
+				if(regBools[7]):
+					# test = ord(OP_CALL_ESP[0])
+						test2 = ord(OP_CALL_ESP[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCall(t, numOps, "ALL", "esp")
+
+				##################### CALL PTR #######################
+
+				#eax
+				if(regBools[0]):
+					# test = ord(OP_CALL_PTR_EAX[0])
+						test2 = ord(OP_CALL_PTR_EAX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							# #print("sending eax")
+							disHereCALLPTR(t, numOps, "ALL", "eax")
+
+				#ebx
+				if(regBools[1]):
+					# test = ord(OP_CALL_PTR_EBX[0])
+						test2 = ord(OP_CALL_PTR_EBX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCALLPTR(t, numOps, "ALL", "ebx")
+
+				#ecx
+				if(regBools[2]):
+					# test = ord(OP_CALL_PTR_ECX[0])
+						test2 = ord(OP_CALL_PTR_ECX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							# #print("sending ecx")
+							disHereCALLPTR(t, numOps, "ALL", "ecx")
+
+				#edx
+				if(regBools[3]):
+					# test = ord(OP_CALL_PTR_EDX[0])
+						test2 = ord(OP_CALL_PTR_EDX[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCALLPTR(t, numOps, "ALL", "edx")
+
+
+				#edi
+				if(regBools[4]):
+					# test = ord(OP_CALL_PTR_EDI[0])
+						test2 = ord(OP_CALL_PTR_EDI[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCALLPTR(t, numOps, "ALL", "edi")
+
+				#esi
+				if(regBools[5]):
+					# test = ord(OP_CALL_PTR_ESI[0])
+						test2 = ord(OP_CALL_PTR_ESI[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCALLPTR(t, numOps, "ALL", "esi")
+
+				#ebp
+				if(regBools[6]):
+					# test = ord(OP_CALL_PTR_EBP[0])
+						test2 = ord(OP_CALL_PTR_EBP[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCALLPTR(t, numOps, "ALL", "ebp")
+
+				#esp
+				if(regBools[7]):
+					# test = ord(OP_CALL_PTR_ESP[0])
+						test2 = ord(OP_CALL_PTR_ESP[1])
+
+						if (ord(objs[o].data2[t+1]) == test2):
+							disHereCALLPTR(t, numOps, "ALL", "esp")
+
+
+
+
+
+			t=t+1
+		numOps = numOps -1
+	# print "specAnswer"
+	# print len(listOP_Base)	
+
+	# ok=raw_input()
+
+
+	listOP_Base_CNT[:] = []
+	listOP_Base[:] = []
+	listOP_Base_NumOps[:] = []
+	listOP_Base_Module[:] = []
+
+def get_OP_ALL_BOTH(NumOpsDis):
+	global o
+	# print "numOps = " + str(NumOpsDis)
+	numOps = NumOpsDis
+
+	regBools = [False, False, False, False, False, False, False, False]
+	for reg in Regs:
+		if reg == "ALL":
+			regBools[0] = True
+			regBools[1] = True
+			regBools[2] = True
+			regBools[3] = True
+			regBools[4] = True
+			regBools[5] = True
+			regBools[6] = True
+			regBools[7] = True
+			break
+		if reg == "EAX":
+			regBools[0] = True
+		if reg == "EBX":
+			regBools[1] = True
+		if reg == "ECX":
+			regBools[2] = True
+		if reg == "EDX":
+			regBools[3] = True
+		if reg == "EDI":
+			regBools[4] = True
+		if reg == "ESI":
+			regBools[5] = True
+		if reg == "EBP":
+			regBools[6] = True
+		if reg == "ESP":
+			regBools[7] = True
+
+	# while numOps > 2:   # Num of Ops to go back
+	totalSize = len(objs[o].data2)	
+	interval = totalSize / 5
+	curInterval = 0
+	t=0;		
+	for v in objs[o].data2:
+
+
+
+		test = ord(OP_JMP_EAX[0])
+		if (ord(objs[o].data2[t]) == test):
+				###################### JMP #########################
+			#eax
+			if(regBools[0]):
+					test2 = ord(OP_JMP_EAX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							# print("in numops")
+							disHereJmp(t, numOps, "ALL", "eax")
+							numOps = numOps - 1
+
+
+			#ebx
+			if(regBools[1]):
+				# test = ord(OP_JMP_EBX[0])
+					test2 = ord(OP_JMP_EBX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJmp(t, numOps, "ALL", "ebx")
+							numOps = numOps - 1
+
+			#ecx
+			if(regBools[2]):
+				# test = ord(OP_JMP_ECX[0])
+					test2 = ord(OP_JMP_ECX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJmp(t, numOps, "ALL", "ecx")
+							numOps = numOps - 1
+
+			#edx
+			if(regBools[3]):
+				# test = ord(OP_JMP_EDX[0])
+					test2 = ord(OP_JMP_EDX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJmp(t, numOps, "ALL", "edx")
+							numOps = numOps - 1
+
+
+			#edi
+			if(regBools[4]):
+				# test = ord(OP_JMP_EDI[0])
+					test2 = ord(OP_JMP_EDI[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJmp(t, numOps, "ALL", "edi")
+							numOps = numOps - 1
+
+			#esi
+			if(regBools[5]):
+				# test = ord(OP_JMP_ESI[0])
+					test2 = ord(OP_JMP_ESI[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJmp(t, numOps, "ALL", "esi")
+							numOps = numOps - 1
+
+			#ebp
+			if(regBools[6]):
+				# test = ord(OP_JMP_EBP[0])
+					test2 = ord(OP_JMP_EBP[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJmp(t, numOps, "ALL", "ebp")
+							numOps = numOps - 1
+
+			#esp
+			if(regBools[7]):
+				# test = ord(OP_JMP_ESP[0])
+					test2 = ord(OP_JMP_ESP[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJmp(t, numOps, "ALL", "esp")
+							numOps = numOps - 1
+
+			####################### JMP PTR #########################
+
+			if(regBools[0]):
+				# test = ord(OP_JMP_PTR_EAX[0])
+					test2 = ord(OP_JMP_PTR_EAX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						# print("test2")
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR(t, numOps, "all", "eax")
+							numOps = numOps - 1
+						clearGOuts()
+						numOps = 4
+						while numOps > 1:
+							disHereJMPPTR2(t, numOps, "all", "eax")
+							numOps = numOps - 1
+						clearGOuts()
+
+				# test = ord(OTHER_JMP_PTR_EAX_SHORT[0])
+					test2 = ord(OTHER_JMP_PTR_EAX_SHORT[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR2(t, numOps, "all", "eax_short")
+							numOps = numOps - 1
+
+			if(regBools[1]):
+				# test = ord(OP_JMP_PTR_EBX[0])
+					test2 = ord(OP_JMP_PTR_EBX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR(t, numOps, "all", "ebx")
+							numOps = numOps - 1
+						clearGOuts()
+						numOps = 4
+						while numOps > 1:
+							disHereJMPPTR2(t, numOps, "all", "ebx")
+							numOps = numOps - 1
+						clearGOuts()
+
+				# test = ord(OTHER_JMP_PTR_EBX_SHORT[0])
+					test2 = ord(OTHER_JMP_PTR_EBX_SHORT[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR2(t, numOps, "all", "ebx_short")
+							numOps = numOps - 1
+
+
+			if(regBools[2]):
+				# test = ord(OP_JMP_PTR_ECX[0])
+					test2 = ord(OP_JMP_PTR_ECX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR(t, numOps, "all", "ecx")
+							numOps = numOps - 1
+						clearGOuts()
+						numOps = 4
+						while numOps > 1:
+							disHereJMPPTR2(t, numOps, "all", "ecx")
+							numOps = numOps - 1
+						clearGOuts()
+
+				# test = ord(OTHER_JMP_PTR_ECX_SHORT[0])
+					test2 = ord(OTHER_JMP_PTR_ECX_SHORT[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR2(t, numOps, "all", "ecx_short")
+							numOps = numOps - 1
+
+			if(regBools[3]):
+				# test = ord(OP_JMP_PTR_EDX[0])
+					test2 = ord(OP_JMP_PTR_EDX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR(t, numOps, "all", "edx")
+							numOps = numOps - 1
+						clearGOuts()
+						numOps = 4
+						while numOps > 1:
+							disHereJMPPTR2(t, numOps, "all", "edx")
+							numOps = numOps - 1
+						clearGOuts()
+
+				# test = ord(OTHER_JMP_PTR_EDX_SHORT[0])
+					test2 = ord(OTHER_JMP_PTR_EDX_SHORT[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR2(t, numOps, "all", "edx_short")
+							numOps = numOps - 1
+
+			if(regBools[4]):
+				# test = ord(OP_JMP_PTR_EDI[0])
+					test2 = ord(OP_JMP_PTR_EDI[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR(t, numOps, "all", "edi")
+							numOps = numOps - 1
+						clearGOuts()
+						numOps = 4
+						while numOps > 1:
+							disHereJMPPTR2(t, numOps, "all", "edi")
+							numOps = numOps - 1
+						clearGOuts()
+
+				# test = ord(OTHER_JMP_PTR_EDI_SHORT[0])
+					test2 = ord(OTHER_JMP_PTR_EDI_SHORT[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR2(t, numOps, "all", "edi_short")
+							numOps = numOps - 1
+
+			if(regBools[5]):
+				# test = ord(OP_JMP_PTR_ESI[0])
+					test2 = ord(OP_JMP_PTR_ESI[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR(t, numOps, "all", "esi")
+							numOps = numOps - 1
+						clearGOuts()
+						numOps = 4
+						while numOps > 1:
+							disHereJMPPTR2(t, numOps, "all", "esi")
+							numOps = numOps - 1
+						clearGOuts()
+
+				# test = ord(OTHER_JMP_PTR_ESI_SHORT[0])
+					test2 = ord(OTHER_JMP_PTR_ESI_SHORT[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR2(t, numOps, "all", "esi_short")
+							numOps = numOps - 1
+
+			if(regBools[6]):
+				# test = ord(OP_JMP_PTR_EBP[0])
+					test2 = ord(OP_JMP_PTR_EBP[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR(t, numOps, "all", "ebp")
+							numOps = numOps - 1
+						clearGOuts()
+						numOps = 4
+						while numOps > 1:
+							disHereJMPPTR2(t, numOps, "all", "ebp")
+							numOps = numOps - 1
+						clearGOuts()
+
+				# test = ord(OTHER_JMP_PTR_EBP_SHORT[0])
+					test2 = ord(OTHER_JMP_PTR_EBP_SHORT[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR2(t, numOps, "all", "ebp_short")
+							numOps = numOps - 1
+
+			if(regBools[7]):
+				# test = ord(OP_JMP_PTR_ESP[0])
+					test2 = ord(OP_JMP_PTR_ESP[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR(t, numOps, "all", "esp")
+							numOps = numOps - 1
+						clearGOuts()
+						numOps = 4
+						while numOps > 1:
+							disHereJMPPTR2(t, numOps, "all", "esp")
+							numOps = numOps - 1
+						clearGOuts()
+
+				# test = ord(OTHER_JMP_PTR_ESP_SHORT[0])
+					test2 = ord(OTHER_JMP_PTR_ESP_SHORT[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereJMPPTR2(t, numOps, "all", "esp_short")
+							numOps = numOps - 1
+
+
+			############################## CALL ###################################
+			#eax
+			if(regBools[0]):
+				# test = ord(OP_CALL_EAX[0])
+					test2 = ord(OP_CALL_EAX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						# print("sending eax")
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCall(t, numOps, "ALL", "eax")
+							numOps = numOps - 1
+
+			#ebx
+			if(regBools[1]):
+				# test = ord(OP_CALL_EBX[0])
+					test2 = ord(OP_CALL_EBX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCall(t, numOps, "ALL", "ebx")
+							numOps = numOps - 1
+
+			#ecx
+			if(regBools[2]):
+				# test = ord(OP_CALL_ECX[0])
+					test2 = ord(OP_CALL_ECX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						# #print("sending ecx")
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCall(t, numOps, "ALL", "ecx")
+							numOps = numOps - 1
+
+			#edx
+			if(regBools[3]):
+				# test = ord(OP_CALL_EDX[0])
+					test2 = ord(OP_CALL_EDX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCall(t, numOps, "ALL", "edx")
+							numOps = numOps - 1
+
+
+			#edi
+			if(regBools[4]):
+				# test = ord(OP_CALL_EDI[0])
+					test2 = ord(OP_CALL_EDI[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCall(t, numOps, "ALL", "edi")
+							numOps = numOps - 1
+
+			#esi
+			if(regBools[5]):
+				# test = ord(OP_CALL_ESI[0])
+					test2 = ord(OP_CALL_ESI[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCall(t, numOps, "ALL", "esi")
+							numOps = numOps - 1
+
+			#ebp
+			if(regBools[6]):
+				# test = ord(OP_CALL_EBP[0])
+					test2 = ord(OP_CALL_EBP[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCall(t, numOps, "ALL", "ebp")
+							numOps = numOps - 1
+
+			#esp
+			if(regBools[7]):
+				# test = ord(OP_CALL_ESP[0])
+					test2 = ord(OP_CALL_ESP[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCall(t, numOps, "ALL", "esp")
+							numOps = numOps - 1
+
+			##################### CALL PTR #######################
+
+			#eax
+			if(regBools[0]):
+				# test = ord(OP_CALL_PTR_EAX[0])
+					test2 = ord(OP_CALL_PTR_EAX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						# #print("sending eax")
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCALLPTR(t, numOps, "ALL", "eax")
+							numOps = numOps - 1
+
+			#ebx
+			if(regBools[1]):
+				# test = ord(OP_CALL_PTR_EBX[0])
+					test2 = ord(OP_CALL_PTR_EBX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCALLPTR(t, numOps, "ALL", "ebx")
+							numOps = numOps - 1
+
+			#ecx
+			if(regBools[2]):
+				# test = ord(OP_CALL_PTR_ECX[0])
+					test2 = ord(OP_CALL_PTR_ECX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						# #print("sending ecx")
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCALLPTR(t, numOps, "ALL", "ecx")
+							numOps = numOps - 1
+
+			#edx
+			if(regBools[3]):
+				# test = ord(OP_CALL_PTR_EDX[0])
+					test2 = ord(OP_CALL_PTR_EDX[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCALLPTR(t, numOps, "ALL", "edx")
+							numOps = numOps - 1
+
+
+			#edi
+			if(regBools[4]):
+				# test = ord(OP_CALL_PTR_EDI[0])
+					test2 = ord(OP_CALL_PTR_EDI[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCALLPTR(t, numOps, "ALL", "edi")
+							numOps = numOps - 1
+
+			#esi
+			if(regBools[5]):
+				# test = ord(OP_CALL_PTR_ESI[0])
+					test2 = ord(OP_CALL_PTR_ESI[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCALLPTR(t, numOps, "ALL", "esi")
+							numOps = numOps - 1
+
+			#ebp
+			if(regBools[6]):
+				# test = ord(OP_CALL_PTR_EBP[0])
+					test2 = ord(OP_CALL_PTR_EBP[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCALLPTR(t, numOps, "ALL", "ebp")
+							numOps = numOps - 1
+
+			#esp
+			if(regBools[7]):
+				# test = ord(OP_CALL_PTR_ESP[0])
+					test2 = ord(OP_CALL_PTR_ESP[1])
+
+					if (ord(objs[o].data2[t+1]) == test2):
+						numOps = NumOpsDis
+						while numOps > 2:
+							disHereCALLPTR(t, numOps, "ALL", "esp")
+							numOps = numOps - 1
+
+
+
+
+		if(t == curInterval):
+			amount = float(curInterval)/float(totalSize) * 100
+			print(str(math.ceil(int(amount))) + "% Complete*")
+			# print("t = " + str(t))
+			# print("interval = " + str(interval))
+			# print("curInterval = " + str(curInterval))
+			curInterval = curInterval + interval						
+		t=t+1
+	print ("Completed scanning of binary, CALL and JMP")
+	numOps = numOps -1
+	# print "specAnswer"
+	# print len(listOP_Base)	
+
+	# ok=raw_input()
+
+
+	listOP_Base_CNT[:] = []
+	listOP_Base[:] = []
+	listOP_Base_NumOps[:] = []
+	listOP_Base_Module[:] = []
+
+
+def get_OP_JMP_ALL( NumOpsDis):
+	global o
+	# print "numOps = " + str(NumOpsDis)
+	numOps = NumOpsDis
+	while numOps > 2:   # Num of Ops to go back
+		t=0;		
+		for v in objs[o].data2:
+			#eax
+			test = ord(OP_JMP_EAX[0])
+			test2 = ord(OP_JMP_EAX[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+						#print("sending eax")
+						disHereJmp(t, numOps, "ALL", "eax")
+
+			#ebx
+			test = ord(OP_JMP_EBX[0])
+			test2 = ord(OP_JMP_EBX[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJmp(t, numOps, "ALL", "ebx")
+
+			#ecx
+			test = ord(OP_JMP_ECX[0])
+			test2 = ord(OP_JMP_ECX[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					#print("sending ecx")
+					disHereJmp(t, numOps, "ALL", "ecx")
+
+			#edx
+			test = ord(OP_JMP_EDX[0])
+			test2 = ord(OP_JMP_EDX[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJmp(t, numOps, "ALL", "edx")
+
+
+			#edi
+			test = ord(OP_JMP_EDI[0])
+			test2 = ord(OP_JMP_EDI[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJmp(t, numOps, "ALL", "edi")
+
+			#esi
+			test = ord(OP_JMP_ESI[0])
+			test2 = ord(OP_JMP_ESI[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJmp(t, numOps, "ALL", "esi")
+
+			#ebp
+			test = ord(OP_JMP_EBP[0])
+			test2 = ord(OP_JMP_EBP[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJmp(t, numOps, "ALL", "ebp")
+
+			#esp
+			test = ord(OP_JMP_ESP[0])
+			test2 = ord(OP_JMP_ESP[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJmp(t, numOps, "ALL", "esp")
+
+
+
+
+
+			t=t+1
+		numOps = numOps -1
+	# print "specAnswer"
+	# print len(listOP_Base)	
+
+	# ok=raw_input()
+
+
+	listOP_Base_CNT[:] = []
+	listOP_Base[:] = []
+	listOP_Base_NumOps[:] = []
+	listOP_Base_Module[:] = []
+
+
+def get_OP_JMP_SPECIFIC( NumOpsDis, regList):
+	global o
+	# print "numOps = " + str(NumOpsDis)
+	# print("in specific")
+	numOps = NumOpsDis
+	while numOps > 2:   # Num of Ops to go back
+		t=0;		
+		for v in objs[o].data2:
+			#eax
+			if(regList[0] == True):
+				test = ord(OP_JMP_EAX[0])
+				test2 = ord(OP_JMP_EAX[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+							#print("sending eax")
+							disHereJmp(t, numOps, "ALL", "eax")
+
+			#ebx
+			if(regList[1] == True):
+				test = ord(OP_JMP_EBX[0])
+				test2 = ord(OP_JMP_EBX[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJmp(t, numOps, "ALL", "ebx")
+	
+			#ecx
+			if(regList[2] == True):
+				test = ord(OP_JMP_ECX[0])
+				test2 = ord(OP_JMP_ECX[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						#print("sending ecx")
+						disHereJmp(t, numOps, "ALL", "ecx")
+
+			#edx
+			if(regList[3] == True):
+				test = ord(OP_JMP_EDX[0])
+				test2 = ord(OP_JMP_EDX[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJmp(t, numOps, "ALL", "edx")
+	
+
+			#edi
+			if(regList[4] == True):
+				test = ord(OP_JMP_EDI[0])
+				test2 = ord(OP_JMP_EDI[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJmp(t, numOps, "ALL", "edi")
+	
+			#esi
+			if(regList[5] == True):
+				test = ord(OP_JMP_ESI[0])
+				test2 = ord(OP_JMP_ESI[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJmp(t, numOps, "ALL", "esi")
+	
+			#ebp
+			if(regList[6] == True):
+				test = ord(OP_JMP_EBP[0])
+				test2 = ord(OP_JMP_EBP[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJmp(t, numOps, "ALL", "ebp")
+	
+			#esp
+			if(regList[7] == True):
+				test = ord(OP_JMP_ESP[0])
+				test2 = ord(OP_JMP_ESP[1])
+				if (ord(objs[o].data2[t]) == test):
+					if (ord(objs[o].data2[t+1]) == test2):
+						disHereJmp(t, numOps, "ALL", "esp")
+	
+
+
+
+
+			t=t+1
+		numOps = numOps -1
+	# print "specAnswer"
+	# print len(listOP_Base)	
+
+	# ok=raw_input()
+
+
+	listOP_Base_CNT[:] = []
+	listOP_Base[:] = []
+	listOP_Base_NumOps[:] = []
+	listOP_Base_Module[:] = []
+
+
+############################# AUSTIN ######################################
+
+
+
+def get_OP_JMP_EAX( NumOpsDis):
+	global o
+	# print "numOps = " + str(NumOpsDis)
 	numOps = NumOpsDis
 	while numOps > 2:   # Num of Ops to go back
 		t=0;		
@@ -13901,6 +16745,181 @@ def get_OP_JMP_ESP(NumOpsDis):
 	listOP_Base[:] = []
 	listOP_Base_NumOps[:] = []
 	listOP_Base_Module[:] = []
+
+
+def get_OP_CALL_ALL( NumOpsDis):
+	global o
+	# print "numOps = " + str(NumOpsDis)
+	numOps = NumOpsDis
+	while numOps > 2:   # Num of Ops to go back
+		t=0;		
+		for v in objs[o].data2:
+			#eax
+			test = ord(OP_CALL_EAX[0])
+			test2 = ord(OP_CALL_EAX[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					# #print("sending eax")
+					disHereCall(t, numOps, "ALL", "eax")
+
+			#ebx
+			test = ord(OP_CALL_EBX[0])
+			test2 = ord(OP_CALL_EBX[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereCall(t, numOps, "ALL", "ebx")
+
+			#ecx
+			test = ord(OP_CALL_ECX[0])
+			test2 = ord(OP_CALL_ECX[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					# #print("sending ecx")
+					disHereCall(t, numOps, "ALL", "ecx")
+
+			#edx
+			test = ord(OP_CALL_EDX[0])
+			test2 = ord(OP_CALL_EDX[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereCall(t, numOps, "ALL", "edx")
+
+
+			#edi
+			test = ord(OP_CALL_EDI[0])
+			test2 = ord(OP_CALL_EDI[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereCall(t, numOps, "ALL", "edi")
+
+			#esi
+			test = ord(OP_CALL_ESI[0])
+			test2 = ord(OP_CALL_ESI[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereCall(t, numOps, "ALL", "esi")
+
+			#ebp
+			test = ord(OP_CALL_EBP[0])
+			test2 = ord(OP_CALL_EBP[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereCall(t, numOps, "ALL", "ebp")
+
+			#esp
+			test = ord(OP_CALL_ESP[0])
+			test2 = ord(OP_CALL_ESP[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereCall(t, numOps, "ALL", "esp")
+
+
+
+
+
+			t=t+1
+		numOps = numOps -1
+	# print "specAnswer"
+	# print len(listOP_Base)	
+
+	# ok=raw_input()
+
+
+	listOP_Base_CNT[:] = []
+	listOP_Base[:] = []
+	listOP_Base_NumOps[:] = []
+	listOP_Base_Module[:] = []
+
+def get_OP_CALL_PTR_ALL( NumOpsDis):
+	global o
+	# print "numOps = " + str(NumOpsDis)
+	numOps = NumOpsDis
+	while numOps > 2:   # Num of Ops to go back
+		t=0;		
+		for v in objs[o].data2:
+			#eax
+			test = ord(OP_CALL_PTR_EAX[0])
+			test2 = ord(OP_CALL_PTR_EAX[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					# #print("sending eax")
+					disHereCALLPTR(t, numOps, "ALL", "eax")
+
+			#ebx
+			test = ord(OP_CALL_PTR_EBX[0])
+			test2 = ord(OP_CALL_PTR_EBX[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereCALLPTR(t, numOps, "ALL", "ebx")
+
+			#ecx
+			test = ord(OP_CALL_PTR_ECX[0])
+			test2 = ord(OP_CALL_PTR_ECX[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					# #print("sending ecx")
+					disHereCALLPTR(t, numOps, "ALL", "ecx")
+
+			#edx
+			test = ord(OP_CALL_PTR_EDX[0])
+			test2 = ord(OP_CALL_PTR_EDX[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereCALLPTR(t, numOps, "ALL", "edx")
+
+
+			#edi
+			test = ord(OP_CALL_PTR_EDI[0])
+			test2 = ord(OP_CALL_PTR_EDI[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereCALLPTR(t, numOps, "ALL", "edi")
+
+			#esi
+			test = ord(OP_CALL_PTR_ESI[0])
+			test2 = ord(OP_CALL_PTR_ESI[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereCALLPTR(t, numOps, "ALL", "esi")
+
+			#ebp
+			test = ord(OP_CALL_PTR_EBP[0])
+			test2 = ord(OP_CALL_PTR_EBP[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereCALLPTR(t, numOps, "ALL", "ebp")
+
+			#esp
+			test = ord(OP_CALL_PTR_ESP[0])
+			test2 = ord(OP_CALL_PTR_ESP[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereCALLPTR(t, numOps, "ALL", "esp")
+
+
+
+
+
+			t=t+1
+		numOps = numOps -1
+	# print "specAnswer"
+	# print len(listOP_Base)	
+
+	# ok=raw_input()
+
+
+	listOP_Base_CNT[:] = []
+	listOP_Base[:] = []
+	listOP_Base_NumOps[:] = []
+	listOP_Base_Module[:] = []
+
+
+
+
+
+
+
+
 
 def get_OP_CALL_EAX(NumOpsDis):
 	numOps = NumOpsDis
@@ -14242,6 +17261,144 @@ def get_OP_CALL_PTR_ESP(NumOpsDis):
 	listOP_Base[:] = []
 	listOP_Base_NumOps[:] = []
 	listOP_Base_Module[:] = []
+
+
+def get_OP_JMP_PTR_ALL(NumOpsDis):
+	global o
+	# print "numOps = " + str(NumOpsDis)
+	numOps = NumOpsDis
+	while numOps > 2:   # Num of Ops to go back
+		t=0;		
+		for v in objs[o].data2:
+			test = ord(OP_JMP_PTR_EAX[0])
+			test2 = ord(OP_JMP_PTR_EAX[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJMPPTR(t, numOps, "all", "eax")
+					disHereJMPPTR2(t, numOps, "all", "eax")
+					clearGOuts()
+
+			test = ord(OP_JMP_PTR_EBX[0])
+			test2 = ord(OP_JMP_PTR_EBX[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJMPPTR(t, numOps, "all", "ebx")
+					disHereJMPPTR2(t, numOps, "all", "ebx")
+					clearGOuts()
+
+			test = ord(OP_JMP_PTR_ECX[0])
+			test2 = ord(OP_JMP_PTR_ECX[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJMPPTR(t, numOps, "all", "ecx")
+					disHereJMPPTR2(t, numOps, "all", "ecx")
+					clearGOuts()
+
+			test = ord(OP_JMP_PTR_EDX[0])
+			test2 = ord(OP_JMP_PTR_EDX[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJMPPTR(t, numOps, "all", "edx")
+					disHereJMPPTR2(t, numOps, "all", "edx")
+					clearGOuts()
+
+			test = ord(OP_JMP_PTR_EDI[0])
+			test2 = ord(OP_JMP_PTR_EDI[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJMPPTR(t, numOps, "all", "edi")
+					disHereJMPPTR2(t, numOps, "all", "edi")
+					clearGOuts()
+
+			test = ord(OP_JMP_PTR_ESI[0])
+			test2 = ord(OP_JMP_PTR_ESI[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJMPPTR(t, numOps, "all", "esi")
+					disHereJMPPTR2(t, numOps, "all", "esi")
+					clearGOuts()
+
+			test = ord(OP_JMP_PTR_EBP[0])
+			test2 = ord(OP_JMP_PTR_EBP[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJMPPTR(t, numOps, "all", "ebp")
+					disHereJMPPTR2(t, numOps, "all", "ebp")
+					clearGOuts()
+
+			test = ord(OP_JMP_PTR_ESP[0])
+			test2 = ord(OP_JMP_PTR_ESP[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJMPPTR(t, numOps, "all", "esp")
+					disHereJMPPTR2(t, numOps, "all", "esp")
+					clearGOuts()
+
+
+			test = ord(OTHER_JMP_PTR_EAX_SHORT[0])
+			test2 = ord(OTHER_JMP_PTR_EAX_SHORT[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJMPPTR2(t, numOps, "all", "eax_short")
+
+			test = ord(OTHER_JMP_PTR_EBX_SHORT[0])
+			test2 = ord(OTHER_JMP_PTR_EBX_SHORT[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJMPPTR2(t, numOps, "all", "ebx_short")
+
+			test = ord(OTHER_JMP_PTR_ECX_SHORT[0])
+			test2 = ord(OTHER_JMP_PTR_ECX_SHORT[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJMPPTR2(t, numOps, "all", "ecx_short")
+
+
+			test = ord(OTHER_JMP_PTR_EDX_SHORT[0])
+			test2 = ord(OTHER_JMP_PTR_EDX_SHORT[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJMPPTR2(t, numOps, "all", "edx_short")
+
+			test = ord(OTHER_JMP_PTR_EDI_SHORT[0])
+			test2 = ord(OTHER_JMP_PTR_EDI_SHORT[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJMPPTR2(t, numOps, "all", "edi_short")
+
+			test = ord(OTHER_JMP_PTR_ESI_SHORT[0])
+			test2 = ord(OTHER_JMP_PTR_ESI_SHORT[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJMPPTR2(t, numOps, "all", "esi_short")
+
+			test = ord(OTHER_JMP_PTR_EBP_SHORT[0])
+			test2 = ord(OTHER_JMP_PTR_EBP_SHORT[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJMPPTR2(t, numOps, "all", "ebp_short")
+
+			test = ord(OTHER_JMP_PTR_ESP_SHORT[0])
+			test2 = ord(OTHER_JMP_PTR_ESP_SHORT[1])
+			if (ord(objs[o].data2[t]) == test):
+				if (ord(objs[o].data2[t+1]) == test2):
+					disHereJMPPTR2(t, numOps, "all", "esp_short")
+
+
+			t=t+1
+		numOps = numOps -1
+	# print "specAnswer"
+	# print len(listOP_Base)	
+
+	# ok=raw_input()
+
+
+	listOP_Base_CNT[:] = []
+	listOP_Base[:] = []
+	listOP_Base_NumOps[:] = []
+	listOP_Base_Module[:] = []
+
+
 
 def get_OP_JMP_PTR_EMPTY_EAX(NumOpsDis):
 	# print "jmpptreax"
@@ -14625,6 +17782,7 @@ def get_OP_JMP_PTR_OTHER_ESP(NumOpsDis):
 	listOP_Base_NumOps[:] = []
 	listOP_Base_Module[:] = []
 def get_OP_JMP_PTR_EBX(NumOpsDis):
+	print("in ebx op")
 	numOps = NumOpsDis
 	while numOps > 2:   # Num of Ops to go back
 		t=0;
@@ -14946,1282 +18104,1464 @@ def get_OP_CALL_PTR_ESP(NumOpsDis):
 	listOP_Base_Module[:] = []
 
 
+def saveDirectory(directory,peName,Reg, operation, output, lock):
+	# global lock
+	# lock=True
+	idval=1
+	# print directory
+	directory2=directory[:-1]
+	# print directory2
+	if not os.path.exists(directory2):
+		os.makedirs(directory2)
+
+	if Reg =="":
+		while os.path.exists("%s%s_%s_%s.txt" % (directory,  peName[:-4], operation,idval)):
+			idval += 1
+	
+		if not lock:
+			# print "NOT LOCKED " + str(idval)
+			newBin = open(directory+peName[:-4]+"_"+operation+"_"+str(idval)+".txt", "wb")
+		if lock:
+			# print "LOCKED " + str(idval-1)
+			newBin = open(directory+peName[:-4]+"_"+operation+"_"+str(idval-1)+".txt", "a")
+	else:  # rEg exists	
+		while os.path.exists("%s%s_%s_%s_%s.txt" % (directory,  peName[:-4], operation, Reg, idval)):
+			idval += 1
+
+		if not lock:
+			# print "NOT LOCKED " + str(idval)
+			newBin = open(directory+peName[:-4]+"_"+operation+"_"+Reg+"_"+str(idval)+".txt", "wb")
+		if lock:
+			# print "LOCKED " + str(idval-1)
+			newBin = open(directory+peName[:-4]+"_"+operation+"_"+Reg+"_"+str(idval-1)+".txt", "a")
+	newBin.write(output)
+	newBin.close()
+
+def showCurrentMitigation():
+	global o
+	myDep = "DEP: " +  str(objs[o].depStatus) + "\t"
+	myASLR = "ASLR: "+ str(objs[o].aslrStatus) + "\t"
+	mySEH = "SEH: "+ str(objs[o].sehSTATUS) + "\t"
+	myCFG = "CFG: "+ str(objs[o].CFGstatus) + "\t"
+
+	comment =('{:<10s} {:<10s}{:<10s}{:<10s}\n'.format(myDep, myASLR, mySEH, myCFG))
+	# print (comment)
+	return comment
+
+
+def nope(filename, total):
+	
+	size = os.stat(filename).st_size
+	# print "nope " + filename
+	if total == 0:
+		try:
+			# print "remove " + filename
+			os.remove(filename)
+			#print "removing " + str(filename)
+		except OSError:
+			pass
+	if size < 20:
+		try:
+			# print "cutting down " + filename
+			os.remove(filename)
+			#print "removing " + str(filename)
+		except OSError:
+			pass
+	else:
+		# print "\t" + str(filename)  + " " +str(size) + " bytes"
+		# print size
+		pass
+
+oldFilename=""
+def nope3(filename):
+	global oldFilename
+	try:
+		size = os.stat(filename).st_size
+
+		# print "nope3 " + filename
+		if size < 10:
+			try:
+				# print "n3 cutting down " + filename
+				os.remove(filename)
+				#print "removing " + str(filename)
+			except OSError:
+				pass
+		else:
+			if (oldFilename != filename):
+				print "\t" + str(filename)  + " \t" +str(float(size)/1000.0) + " kb"
+			oldFilename=filename
+
+			# print size
+	except:
+		oldFilename=filename
+		pass
+# Prevents files from being printed if empty or have no results - just removes them.
+
+
+def nope2(filename, total, index):
+	if total < 1:  
+		try:
+			os.remove(filename)
+#			print "removing " + str(filename)
+			sp()
+		except OSError:
+			pass
+
+	else:
+		if index == 0:
+			if total == 1:
+				os.remove(filename)
+				sp()
+			else:
+				# print "\t" + str(filename)
+				sp()
+		else:
+			# print "\t" + str(filename)
+			sp()
+
+def printlistOP_Mitigations():
+	global filename
+	global o
+	global directory
+	global levelTwo
+	global CheckallModules
+	o=0
+	clearHashChecker()
+	idval = 1
+	operation="MITIGATIONS"
+	lock = False
+	# print "in printlistop_add"
+	while os.path.exists("%s%s-MITIGATIONS_OP_%s.txt" % (directory, peName, idval)):
+	    idval += 1
+	filename = directory + peName +"-"+"MITIGATIONS_OP_" + str(idval) + ".txt"
+	
+		# objs[o].depStatus = dep()
+		# 	objs[o].aslrStatus =  aslr()
+		# 	objs[o].sehSTATUS = seh()
+		# 	objs[o].CFGstatus = CFG()
+
+	fname = filename
+	out=""
+	seperator="\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+
+	with open(filename, 'a') as f:
+		
+		output="Known Mitigations:\n" + outputMitigations()
+		print >> f, output
+		# if len(objs)==1:
+		# 	print >> f, output
+		i=0
+		total = 0
+		temp = []
+		# out="Just status\n"
+		# out +="size: " + str(len(objs))
+		# o=0
+		# for obj in objs:
+		# 	# out += (objs[o].modName) + "\t"
+		# 	out += str(objs[o].depStatus) + "\t"
+		# 	out += str(objs[o].aslrStatus) + "\t"
+		# 	out += str(objs[o].sehSTATUS) + "\t"
+		# 	out += str(objs[o].CFGstatus) + "\t"
+		# 	out +=str(hex(objs[o].vSize)) + "\n"
+		# 	o+=1
+
+		# o=0
+		# out +="Names\n"
+		# for obj in objs:
+		# 	out += (objs[o].modName) + "\n"
+		# 	o+=1
+
+		# o=0
+		# # out +=" + Status\n"
+		# out += seperator
+		# out +="\nMitigations for scanned Modules:\n"
+		# for obj in objs:
+		# 	out += (objs[o].modName) + "\t"
+		# 	# out +=objs[o].listOP_JMP_EAX_Module[0] + "\t"
+		# 	out += "DEP: " + str(objs[o].depStatus) + "\t"
+		# 	out += "ASLR: " + str(objs[o].aslrStatus) + "\t"
+		# 	out += "SafeSEH: " + str(objs[o].sehSTATUS) + "\t"
+		# 	out += "CFG: " + str(objs[o].CFGstatus) + "\t"
+		# 	out +="Module size: " + str(hex(objs[o].vSize)) + " bytes\n"
+		# 	o+=1
+		# if len(objs) > 1:
+		# 	print >> f, out
+		out3=""
+		if not CheckallModules and not levelTwo:
+			out3="\nResults show are only for the image executable itself - no modules!\n\tTry enumerating some modules on main menu.\n"
+		if CheckallModules and not levelTwo:
+			out3="\nResults show are only for the image executable itself and modules in the IAT.\n"
+		if  CheckallModules and levelTwo:
+			out3="\nResults show are only for modules in the IAT and beyond.\n"
+		print >> f, out3
+		output2 = "\n\nNote: to obtain gadgets for modules, you must scan them first.\n"
+
+		if len(objs) == 1:
+			print >> f, output2
+
+	o = 0
+	f.close()
+	# print "after f.close"
+
 
 def printlistOP_JMP_EAX(NumOpsDis):
+	# print ("enter new printlist")
 	global o
+	global printStyle
 	idval = 1
+	o=0
 	clearHashChecker()
-	while os.path.exists("%s-JMP EAX ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"JMP EAX ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_JMP_EAX2.__len__()
-			for i in range (cnt):
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_JMP_EAX2[i]
-				cnt = objs[o].listOP_JMP_EAX_CNT[i]
-				num = objs[o].listOP_JMP_EAX_NumOps[i]
-				mod = objs[o].listOP_JMP_EAX_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean2(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+	operation="My JMP EAX ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_JMP_EAX2.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_JMP_EAX2[i]
+			cnt = objs[o].listOP_JMP_EAX_CNT[i]
+			num = objs[o].listOP_JMP_EAX_NumOps[i]
+			mod = objs[o].listOP_JMP_EAX_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			val =objs[o].listOP_JMP_EAX2.__len__()
-			total = val + total
-			counterReset()
-			o = o + 1
-		out = "JOP ROCKET"
-		print >> f, out
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_JMP_EAX2.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
 	o = 0
-	if total == 0:
-		nope(filename, total)
-	# nope2(filename, total, objs[0].listOP_JMP_EAX2[0])
-
 
 def printlistOP_JMP_EBX(NumOpsDis):
+	global printStyle
 	global o
 	idval = 1
 	clearHashChecker()
-	while os.path.exists("%s-JMP EBX ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"JMP EBX ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_JMP_EBX.__len__()
-			for i in range (cnt):
-				#print "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
-				#print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_JMP_EBX[i]
-				cnt = objs[o].listOP_JMP_EBX_CNT[i]
-				num = objs[o].listOP_JMP_EBX_NumOps[i]
-				mod = objs[o].listOP_JMP_EBX_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				#print str(addy) + "\t" +str(cnt)+ "\t" +str(num)+ "\t" + str(mod)
-				sp()
-				cat = disHereClean2(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+	o=0
+	operation="JMP EBX ALL"
+	global directory
+	o=0
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_JMP_EBX.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_JMP_EBX[i]
+			cnt = objs[o].listOP_JMP_EBX_CNT[i]
+			num = objs[o].listOP_JMP_EBX_NumOps[i]
+			mod = objs[o].listOP_JMP_EBX_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			val =objs[o].listOP_JMP_EBX.__len__()
-			total = val + total
-			out = "JOP ROCKET" # JMP EBX total: " + str(val)
-			#print out
-			print >> f, out
-			counterReset()
-			o = o + 1
-		out = ""#"# Grand total JMP EBX total: " + str(total)
-		#print out
-		#print >> f, out
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_JMP_EBX.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
 	o = 0
-	if total == 0:
-		nope(filename, total)
-	nope2(filename, total, objs[0].listOP_JMP_EBX[0])
-
-
+	
 def printlistOP_JMP_ECX(NumOpsDis):
+	global printStyle
 	global o
 	idval = 1
-	while os.path.exists("%s-JMP ECX ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"JMP ECX ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_JMP_ECX.__len__()
-			for i in range (cnt):
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_JMP_ECX[i]
-				cnt = objs[o].listOP_JMP_ECX_CNT[i]
-				num = objs[o].listOP_JMP_ECX_NumOps[i]
-				mod = objs[o].listOP_JMP_ECX_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean2(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+	o=0
+	clearHashChecker()
+	operation="JMP ECX ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_JMP_ECX.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_JMP_ECX[i]
+			cnt = objs[o].listOP_JMP_ECX_CNT[i]
+			num = objs[o].listOP_JMP_ECX_NumOps[i]
+			mod = objs[o].listOP_JMP_ECX_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			val =objs[o].listOP_JMP_ECX.__len__()
-			total = val + total
-			counterReset()
-			o = o + 1
-		out = "JOP ROCKET"
-		print >> f, out
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_JMP_ECX.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
 	o = 0
-	if total == 0:
-		nope(filename, total)
-	nope2(filename, total, objs[0].listOP_JMP_ECX[0])
-
 
 def printlistOP_JMP_EDX(NumOpsDis):
+	global printStyle
 	global o
 	idval = 1
-	while os.path.exists("%s-JMP EDX ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"JMP EDX ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_JMP_EDX.__len__()
-			for i in range (cnt):
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_JMP_EDX[i]
-				cnt = objs[o].listOP_JMP_EDX_CNT[i]
-				num = objs[o].listOP_JMP_EDX_NumOps[i]
-				mod = objs[o].listOP_JMP_EDX_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean2(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+	o=0
+	clearHashChecker()
+	operation="JMP EDX ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_JMP_EDX.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_JMP_EDX[i]
+			cnt = objs[o].listOP_JMP_EDX_CNT[i]
+			num = objs[o].listOP_JMP_EDX_NumOps[i]
+			mod = objs[o].listOP_JMP_EDX_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			val =objs[o].listOP_JMP_EDX.__len__()
-			total = val + total
-			counterReset()
-			o = o + 1
-		out = "JOP ROCKET"
-		print >> f, out
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()					
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_JMP_EDX.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
 	o = 0
-	if total == 0:
-		nope(filename, total)
-	nope2(filename, total, objs[0].listOP_JMP_EDX[0])
-
+	
+def printlistOP_JMP_ESI(NumOpsDis):
+	global printStyle
+	global o
+	idval = 1
+	clearHashChecker()
+	o=0
+	o=0
+	operation="JMP ESI ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_JMP_ESI.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_JMP_ESI[i]
+			cnt = objs[o].listOP_JMP_ESI_CNT[i]
+			num = objs[o].listOP_JMP_ESI_NumOps[i]
+			mod = objs[o].listOP_JMP_ESI_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()					
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_JMP_ESI.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
+	o = 0
 
 def printlistOP_JMP_EDI(NumOpsDis):
+	global printStyle
 	global o
 	idval = 1
-	while os.path.exists("%s-JMP EDI ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"JMP EDI ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_JMP_EDI.__len__()
-			for i in range (cnt):
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_JMP_EDI[i]
-				cnt = objs[o].listOP_JMP_EDI_CNT[i]
-				num = objs[o].listOP_JMP_EDI_NumOps[i]
-				mod = objs[o].listOP_JMP_EDI_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean2(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+	o=0
+	clearHashChecker()
+	operation="JMP EDI ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_JMP_EDI.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_JMP_EDI[i]
+			cnt = objs[o].listOP_JMP_EDI_CNT[i]
+			num = objs[o].listOP_JMP_EDI_NumOps[i]
+			mod = objs[o].listOP_JMP_EDI_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			val =objs[o].listOP_JMP_EDI.__len__()
-			total = val + total
-			counterReset()
-			o = o + 1
-		out = "JOP ROCKET"
-		print >> f, out
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()					
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_JMP_EDI.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
 	o = 0
-	if total == 0:
-		nope(filename, total)
-	nope2(filename, total, objs[0].listOP_JMP_EDI[0])
-
-def printlistOP_JMP_ESI(NumOpsDis):
-	global o
-	idval = 1
-	while os.path.exists("%s-JMP ESI ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"JMP ESI ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_JMP_ESI.__len__()
-			for i in range (cnt):
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_JMP_ESI[i]
-				cnt = objs[o].listOP_JMP_ESI_CNT[i]
-				num = objs[o].listOP_JMP_ESI_NumOps[i]
-				mod = objs[o].listOP_JMP_ESI_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean2(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			val =objs[o].listOP_JMP_ESI.__len__()
-			total = val + total
-			counterReset()
-			o = o + 1
-		out = "JOP ROCKET"
-		print >> f, out
-	o = 0
-	if total == 0:
-		nope(filename, total)
-	nope2(filename, total, objs[0].listOP_JMP_ESI[0])
-
-def printlistOP_JMP_EBP(NumOpsDis):
-	global o
-	idval = 1
-	while os.path.exists("%s-JMP EBP ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"JMP EBP ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_JMP_EBP.__len__()
-			for i in range (cnt):
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_JMP_EBP[i]
-				cnt = objs[o].listOP_JMP_EBP_CNT[i]
-				num = objs[o].listOP_JMP_EBP_NumOps[i]
-				mod = objs[o].listOP_JMP_EBP_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean2(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			val =objs[o].listOP_JMP_EBP.__len__()
-			total = val + total
-			counterReset()
-			o = o + 1
-		out = "JOP ROCKET"
-		print >> f, out
-	o = 0
-	if total == 0:
-		nope(filename, total)
-	nope2(filename, total, objs[0].listOP_JMP_EBP[0])
 
 def printlistOP_JMP_ESP(NumOpsDis):
+	global printStyle
 	global o
 	idval = 1
-	while os.path.exists("%s-JMP ESP ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"JMP ESP ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_JMP_ESP.__len__()
-			for i in range (cnt):
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_JMP_ESP[i]
-				cnt = objs[o].listOP_JMP_ESP_CNT[i]
-				num = objs[o].listOP_JMP_ESP_NumOps[i]
-				mod = objs[o].listOP_JMP_ESP_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean2(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+	o=0
+	clearHashChecker()
+	operation="JMP ESP ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_JMP_ESP.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_JMP_ESP[i]
+			cnt = objs[o].listOP_JMP_ESP_CNT[i]
+			num = objs[o].listOP_JMP_ESP_NumOps[i]
+			mod = objs[o].listOP_JMP_ESP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			val =objs[o].listOP_JMP_ESP.__len__()
-			total = val + total
-			counterReset()
-			o = o + 1
-		out = "JOP ROCKET"
-		print >> f, out
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()					
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_JMP_ESP.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
 	o = 0
-	if total == 0:
-		nope(filename, total)
-	nope2(filename, total, objs[0].listOP_JMP_ESP[0])
 
-def printlistOP_JMP_PTR_EAX(NumOpsDis):
+def printlistOP_JMP_EBP(NumOpsDis):
+	global printStyle
 	global o
+	idval = 1
+	o=0
+	clearHashChecker()
+	operation="JMP EBP ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_JMP_EBP.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_JMP_EBP[i]
+			cnt = objs[o].listOP_JMP_EBP_CNT[i]
+			num = objs[o].listOP_JMP_EBP_NumOps[i]
+			mod = objs[o].listOP_JMP_EBP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()					
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_JMP_EBP.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
+	o = 0
+
+
+
+def savePrintData(Reg, operation):
+	global filePrintData
+	filePrintData=(tuple((Reg, operation)))
+	
+def mybufA(data):
+	global tempBuffer
+	tempBuffer+=data
+
+def freebufA():
+	global tempBuffer
+	tempBuffer=""
+
+def bufA(data):
+	global directory
+	global peName
+	global filePrintData
+	global bufCount
+	bufCount+=1
+	reg = filePrintData[0]
+	operation = filePrintData[1]
+	lock=False
+	Empty=""
+	if bufCount==1:
+		saveDirectory(directory, peName, reg, operation, data,lock)
+	else:
+		lock=True
+		saveDirectory(directory, peName, reg, operation, data,lock)
+
+def printlistOP_JMP_PTR_OTHER(NumOpsDis):
+	global o
+	global directory
+	global printStyle
+	global bufCount
+	bufCount=0
+	seperator="\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 	idval = 1
 	clearHashChecker()
 	counterReset()
-	while os.path.exists("%s-JMP PTR EAX ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"JMP PTR EAX ALL_" + str(idval) + ".txt"
+	operation="JMP PTR Other ALL"
+	savePrintData("", operation)
 	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_JMP_PTR_EAX.__len__()
-			for i in range (cnt):
-
-				print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-				counter()
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_JMP_PTR_EAX[i]
-				cnt = objs[o].listOP_JMP_PTR_EAX_CNT[i]
-				num = objs[o].listOP_JMP_PTR_EAX_NumOps[i]
-				mod = objs[o].listOP_JMP_PTR_EAX_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-
-				print >> f, Ct () + "\t" + out
-				#print disHereClean(addy, cnt, num, "jmp")
-				print >> f, disHereClean2(addy, cnt, num, "jmp")
-			val =objs[o].listOP_JMP_PTR_EAX.__len__()
-			total = val + total
-			out = "# JMP PTR [EAX] total" " + str(val)"
-			#print out
-			print >> f, out
-			counterReset()
-			o = o + 1
-		out = ""#"# Grand total JMP PTR [EAX] total" " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	nope(filename, total)
-
-def printlistOP_JMP_PTR_OTHER_EAX(NumOpsDis):
-	global o
-	idval = 1
-	clearHashChecker()
-	counterReset()
-	while os.path.exists("%s-JMP PTR OTHER EAX ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"JMP PTR OTHER EAX ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
+	try:
 		for obj in objs:
 			i=0
 			cnt = objs[o].listOP_JMP_PTR_OTHER_EAX.__len__()
+			out = "\n** Other JMP PTR [EAX] Gadgets **\n" 
+			if cnt >0:
+				bufA(out)			
 			for i in range (cnt):
-
-				print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-				counter()
-				addy =0
+				addy =0x0
 				cnt = 0   #
 				num = 0
-				Reg="EAX"
+
 				addy = objs[o].listOP_JMP_PTR_OTHER_EAX[i]
 				cnt = objs[o].listOP_JMP_PTR_OTHER_EAX_CNT[i]
 				num = objs[o].listOP_JMP_PTR_OTHER_EAX_NumOps[i]
 				mod = objs[o].listOP_JMP_PTR_OTHER_EAX_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-
-				print >> f, Ct () + "\t" + out
-				# print disHereClean(addy, cnt, num, "jmp")
-				print >> f, disHereClean2Other(addy, cnt, num, "jmp", Reg)
-				# print >> f, disHereJMPPTR2_CLEAN(addy, num, mod, Reg)
-			out = "# JMP ROCKET"
+				Reg="EAX"
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+				try:
+					addy=int(addy,16)
+					cat=disHereClean2Other(addy, cnt, num, "jmp", Reg)
+				except:
+					cat=disHereClean2Other(addy, cnt, num, "jmp", Reg)
+				if (not cat == "" ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+					if printStyle:
+						counter()
+						cat0= seperator + Ct () + "\t" + out + showCurrentMitigation()
+						cat=cat0+ cat
+					if not printStyle:
+						cat=cat+showCurrentMitigation()
+					bufA(cat)
+			val =objs[o].listOP_JMP_PTR_EAX.__len__()
+			total = val + total
 			counterReset()
 			o = o + 1
-		print >> f, out
+		o = 0
+	except:
+		pass
 	o = 0
-	# nope(filename, total)
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_JMP_PTR_OTHER_EBX.__len__()
+			out = "\n** Other JMP PTR [EBX] Gadgets **\n" 
+			if cnt >0:
+				bufA(out)
+			for i in range (cnt):
+				addy =0x0
+				cnt = 0   #
+				num = 0
 
-
-def printlistOP_JMP_PTR_OTHER(NumOpsDis):
-	global o
-	idval = 1
-	clearHashChecker()
-	counterReset()
-	while os.path.exists("%s-JMP PTR Other ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"JMP PTR Other ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_JMP_PTR_OTHER_EAX.__len__()
-				out = "\n** Other JMP PTR [EAX] Gadgets **" 
-				if cnt >0:
-					print >> f, out
-				for i in range (cnt):
-
-
-					addy =0x0
-					cnt = 0   #
-					num = 0
-
-
-
-					addy = objs[o].listOP_JMP_PTR_OTHER_EAX[i]
-					cnt = objs[o].listOP_JMP_PTR_OTHER_EAX_CNT[i]
-					num = objs[o].listOP_JMP_PTR_OTHER_EAX_NumOps[i]
-					mod = objs[o].listOP_JMP_PTR_OTHER_EAX_Module[i]
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					out =  "\tMod: " + str(mod)
-					print >> f, Ct () + "\t" + out
-					Reg="EAX"
-					try:
-						addy=int(addy,16)
-						print >> f, disHereClean2Other(addy, cnt, num, "jmp", Reg)
-					except:
-						print >> f, disHereClean2Other(addy, cnt, num, "jmp", Reg)
-				val =objs[o].listOP_JMP_PTR_EAX.__len__()
-				total = val + total
-				#print out
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
+				addy = objs[o].listOP_JMP_PTR_OTHER_EBX[i]
+				num = objs[o].listOP_JMP_PTR_OTHER_EBX_NumOps[i]
+				mod = objs[o].listOP_JMP_PTR_OTHER_EBX_Module[i]
+				cnt = objs[o].listOP_JMP_PTR_OTHER_EBX_CNT[i]
+				Reg="EBX"
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+				try:
+					addy=int(addy,16)
+					cat=disHereClean2Other(addy, cnt, num, "jmp", Reg)
+				except:
+					cat=disHereClean2Other(addy, cnt, num, "jmp", Reg)
+				if (not cat == "" ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+					if printStyle:
+						counter()
+						cat0= seperator + Ct () + "\t" + out + showCurrentMitigation()
+						cat=cat0+ cat
+					if not printStyle:
+						cat=cat+showCurrentMitigation()
+					bufA(cat)
+			val =objs[o].listOP_JMP_PTR_EBX.__len__()
+			total = val + total
+			counterReset()
+			o = o + 1
 		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_JMP_PTR_OTHER_EBX.__len__()
-				out = "\n** Other JMP PTR [EBX] Gadgets **" 
-				if cnt >0:
-					print >> f, out
-				for i in range (cnt):
-					counter()
-
-					addy =0x0
-					cnt = 0   #
-					num = 0
-					addy = objs[o].listOP_JMP_PTR_OTHER_EBX[i]
-					num = objs[o].listOP_JMP_PTR_OTHER_EBX_NumOps[i]
-					mod = objs[o].listOP_JMP_PTR_OTHER_EBX_Module[i]
-					cnt = objs[o].listOP_JMP_PTR_OTHER_EBX_CNT[i]
-					Reg="EBX"
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					out =  "\tMod: " + str(mod)
-					print >> f, Ct () + "\t" + out
-					try:
-						addy=int(addy,16)
-						print >> f, disHereClean2Other(addy, cnt, num, "jmp", Reg)
-					except:
-						print >> f, disHereClean2Other(addy, cnt, num, "jmp", Reg)
-				val =objs[o].listOP_JMP_PTR_EBX.__len__()
-				total = val + total
-				#print out
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_JMP_PTR_OTHER_ECX.__len__()
-				if cnt >0:
-					out = "\n** Other JMP PTR [ECX] Gadgets **" 
-					print >> f, out
-				for i in range (cnt):
-					counter()
-					addy =0x0
-					cnt = 0   #
-					num = 0
-					Reg="ECX"
-					addy = objs[o].listOP_JMP_PTR_OTHER_ECX[i]
-					num = objs[o].listOP_JMP_PTR_OTHER_ECX_NumOps[i]
-					mod = objs[o].listOP_JMP_PTR_OTHER_ECX_Module[i]
-					cnt = objs[o].listOP_JMP_PTR_OTHER_ECX_CNT[i]
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					out =  "\tMod: " + str(mod)
-					print >> f, Ct () + "\t" + out					
-					try:
-						addy=int(addy,16)
-						print >> f, disHereClean2Other(addy, cnt, num, "jmp", Reg)
-					except:
-						print >> f, disHereClean2Other(addy, cnt, num, "jmp", Reg)
-				val =objs[o].listOP_JMP_PTR_ECX.__len__()
-				total = val + total
-				#print out
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_JMP_PTR_OTHER_EDX.__len__()
-				if cnt >0:
-					out = "\n** Other JMP PTR [EDX] Gadgets **" 
-					print >> f, out
-				for i in range (cnt):
-					counter()
-					addy =0x0
-					cnt = 0   #
-					num = 0
-					addy = objs[o].listOP_JMP_PTR_OTHER_EDX[i]
-					num = objs[o].listOP_JMP_PTR_OTHER_EDX_NumOps[i]
-					mod = objs[o].listOP_JMP_PTR_OTHER_EDX_Module[i]
-					cnt = objs[o].listOP_JMP_PTR_OTHER_EDX_CNT[i]
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					out =  "\tMod: " + str(mod)
-					print >> f, Ct () + "\t" + out					
-					Reg="EDX"
-					# print "edx??"
-					try:
-						addy=int(addy,16)
-						print >> f, disHereClean2Other(addy, cnt, num, "jmp", Reg)
-					except:
-						print >> f, disHereClean2Other(addy, cnt, num, "jmp", Reg)
-				val =objs[o].listOP_JMP_PTR_EDX.__len__()
-				total = val + total
-				#print out
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_JMP_PTR_OTHER_EDI.__len__()
-				if cnt >0:
-					out = "\n** Other JMP PTR [EDI] Gadgets **" 
-					print >> f, out
-				for i in range (cnt):
-					counter()
-					addy =0x0
-					cnt = 0   #
-					num = 0
-					addy = objs[o].listOP_JMP_PTR_OTHER_EDI[i]
-					num = objs[o].listOP_JMP_PTR_OTHER_EDI_NumOps[i]
-					mod = objs[o].listOP_JMP_PTR_OTHER_EDI_Module[i]
-					cnt = objs[o].listOP_JMP_PTR_OTHER_EDI_CNT[i]
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					out =  "\tMod: " + str(mod)
-					print >> f, Ct () + "\t" + out					
-					Reg="EDI"
-					try:
-						addy=int(addy,16)
-						print >> f, disHereClean2Other(addy, cnt, num, "jmp", Reg)
-					except:
-						print >> f, disHereClean2Other(addy, cnt, num, "jmp", Reg)
-				val =objs[o].listOP_JMP_PTR_EDI.__len__()
-				total = val + total
-				#print out
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_JMP_PTR_OTHER_ESI.__len__()
-				if cnt >0:
-					out = "\n** Other JMP PTR [ESI] Gadgets **" 
-					print >> f, out
-				for i in range (cnt):
-					counter()
-					addy =0x0
-					cnt = 0   #
-					num = 0
-					addy = objs[o].listOP_JMP_PTR_OTHER_ESI[i]
-					num = objs[o].listOP_JMP_PTR_OTHER_ESI_NumOps[i]
-					mod = objs[o].listOP_JMP_PTR_OTHER_ESI_Module[i]
-					cnt = objs[o].listOP_JMP_PTR_OTHER_ESI_CNT[i]					
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					out =  "\tMod: " + str(mod)
-					print >> f, Ct () + "\t" + out					
-					Reg="ESI"
-					try:
-						addy=int(addy,16)
-						print >> f, disHereClean2Other(addy, cnt, num, "jmp", Reg)
-					except:
-						print >> f, disHereClean2Other(addy, cnt, num, "jmp", Reg)
-				val =objs[o].listOP_JMP_PTR_ESI.__len__()
-				total = val + total
-				#print out
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_JMP_PTR_OTHER_EBP.__len__()
-				if cnt >0:
-					out = "\n** Other JMP PTR [EBP] Gadgets **" 
-				if cnt >0:
-					print >> f, out
-				for i in range (cnt):
-					counter()
-					addy =0x0
-					cnt = 0   #
-					num = 0
-					addy = objs[o].listOP_JMP_PTR_OTHER_EBP[i]
-					num = objs[o].listOP_JMP_PTR_OTHER_EBP_NumOps[i]
-					mod = objs[o].listOP_JMP_PTR_OTHER_EBP_Module[i]
-					cnt = objs[o].listOP_JMP_PTR_OTHER_EBP_CNT[i]					
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					out =  "\tMod: " + str(mod)
-					print >> f, Ct () + "\t" + out
-					Reg="EBP"
-					try:
-						addy=int(addy,16)
-						print >> f, disHereClean2Other(addy, cnt, num, "jmp", Reg)
-					except:
-						print >> f, disHereClean2Other(addy, cnt, num, "jmp", Reg)
-				val =objs[o].listOP_JMP_PTR_EBP.__len__()
-				total = val + total
-				#print out
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_JMP_PTR_OTHER_ESP.__len__()
-				out = "\n** Other JMP PTR [ESP] Gadgets **" 
-				if cnt >0:
-					print >> f, out
-				for i in range (cnt):
-					counter()
-					addy =0x0
-					cnt = 0   #
-					num = 0
-					addy = objs[o].listOP_JMP_PTR_OTHER_ESP[i]
-					num = objs[o].listOP_JMP_PTR_OTHER_ESP_NumOps[i]
-					mod = objs[o].listOP_JMP_PTR_OTHER_ESP_Module[i]
-					cnt = objs[o].listOP_JMP_PTR_OTHER_ESP_CNT[i]
-					Reg="ESP"
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					out =  "\tMod: " + str(mod)
-					print >> f, Ct () + "\t" + out					
-					try:
-						addy=int(addy,16)
-						print >> f, disHereClean2Other(addy, cnt, num, "jmp", Reg)
-					except:
-						print >> f, disHereClean2Other(addy, cnt, num, "jmp", Reg)
-				val =objs[o].listOP_JMP_PTR_ESP.__len__()
-				total = val + total
-				#print out
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0	
+	except:
+		pass
 	o = 0
-	# nope(filename, total)
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_JMP_PTR_OTHER_ECX.__len__()
+			if cnt >0:
+				out = "\n** Other JMP PTR [ECX] Gadgets **\n" 
+				bufA(out)
+			for i in range (cnt):
+				addy =0x0
+				cnt = 0   #
+				num = 0
 
+				Reg="ECX"
+				addy = objs[o].listOP_JMP_PTR_OTHER_ECX[i]
+				num = objs[o].listOP_JMP_PTR_OTHER_ECX_NumOps[i]
+				mod = objs[o].listOP_JMP_PTR_OTHER_ECX_Module[i]
+				cnt = objs[o].listOP_JMP_PTR_OTHER_ECX_CNT[i]
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+				try:
+					addy=int(addy,16)
+					cat=disHereClean2Other(addy, cnt, num, "jmp", Reg)
+				except:
+					cat=disHereClean2Other(addy, cnt, num, "jmp", Reg)
+				if (not cat == "" ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+					if printStyle:
+						counter()
+						cat0= seperator + Ct () + "\t" + out + showCurrentMitigation()
+						cat=cat0+ cat
+					if not printStyle:
+						cat=cat+showCurrentMitigation()
+					bufA(cat)
+			val =objs[o].listOP_JMP_PTR_ECX.__len__()
+			total = val + total
+			counterReset()
+			o = o + 1
+		o = 0
+	except:
+		pass
+	o = 0
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_JMP_PTR_OTHER_EDX.__len__()
+			if cnt >0:
+				out = "\n** Other JMP PTR [EDX] Gadgets **\n" 
+				bufA(out)
+			for i in range (cnt):
+				addy =0x0
+				cnt = 0   #
+				num = 0
+
+				addy = objs[o].listOP_JMP_PTR_OTHER_EDX[i]
+				num = objs[o].listOP_JMP_PTR_OTHER_EDX_NumOps[i]
+				mod = objs[o].listOP_JMP_PTR_OTHER_EDX_Module[i]
+				cnt = objs[o].listOP_JMP_PTR_OTHER_EDX_CNT[i]					
+				Reg="EDX"
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+				try:
+					addy=int(addy,16)
+					cat=disHereClean2Other(addy, cnt, num, "jmp", Reg)
+				except:
+					cat=disHereClean2Other(addy, cnt, num, "jmp", Reg)
+				if (not cat == "" ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+					if printStyle:
+						counter()
+						cat0= seperator + Ct () + "\t" + out + showCurrentMitigation()
+						cat=cat0+ cat
+					if not printStyle:
+						cat=cat+showCurrentMitigation()
+					bufA(cat)
+			val =objs[o].listOP_JMP_PTR_EDX.__len__()
+			total = val + total
+			counterReset()
+			o = o + 1
+		o = 0
+	except:
+		pass
+	o = 0
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_JMP_PTR_OTHER_EDI.__len__()
+			if cnt >0:
+				out = "\n** Other JMP PTR [EDI] Gadgets **\n" 
+				bufA(out)
+			for i in range (cnt):
+				addy =0x0
+				cnt = 0   #
+				num = 0
+
+				addy = objs[o].listOP_JMP_PTR_OTHER_EDI[i]
+				num = objs[o].listOP_JMP_PTR_OTHER_EDI_NumOps[i]
+				mod = objs[o].listOP_JMP_PTR_OTHER_EDI_Module[i]
+				cnt = objs[o].listOP_JMP_PTR_OTHER_EDI_CNT[i]			
+				Reg="EDI"
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+				try:
+					addy=int(addy,16)
+					cat=disHereClean2Other(addy, cnt, num, "jmp", Reg)
+				except:
+					cat=disHereClean2Other(addy, cnt, num, "jmp", Reg)
+				if (not cat == "" ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+					if printStyle:
+						counter()
+						cat0= seperator + Ct () + "\t" + out + showCurrentMitigation()
+						cat=cat0+ cat
+					if not printStyle:
+						cat=cat+showCurrentMitigation()
+					bufA(cat)
+			val =objs[o].listOP_JMP_PTR_EDI.__len__()
+			total = val + total
+			counterReset()
+			o = o + 1
+		o = 0
+	except:
+		pass
+	o = 0
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_JMP_PTR_OTHER_ESI.__len__()
+			if cnt >0:
+				out = "\n** Other JMP PTR [ESI] Gadgets **\n" 
+				bufA(out)
+			for i in range (cnt):
+				addy =0x0
+				cnt = 0   #
+				num = 0
+
+				addy = objs[o].listOP_JMP_PTR_OTHER_ESI[i]
+				num = objs[o].listOP_JMP_PTR_OTHER_ESI_NumOps[i]
+				mod = objs[o].listOP_JMP_PTR_OTHER_ESI_Module[i]
+				cnt = objs[o].listOP_JMP_PTR_OTHER_ESI_CNT[i]					
+			
+				Reg="ESI"
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+				try:
+					addy=int(addy,16)
+					cat=disHereClean2Other(addy, cnt, num, "jmp", Reg)
+				except:
+					cat=disHereClean2Other(addy, cnt, num, "jmp", Reg)
+				if (not cat == "" ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+					if printStyle:
+						counter()
+						cat0= seperator + Ct () + "\t" + out + showCurrentMitigation()
+						cat=cat0+ cat
+					if not printStyle:
+						cat=cat+showCurrentMitigation()
+					bufA(cat)
+			val =objs[o].listOP_JMP_PTR_ESI.__len__()
+			total = val + total
+			counterReset()
+			o = o + 1
+		o = 0
+	except:
+		pass
+	o = 0
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_JMP_PTR_OTHER_EBP.__len__()
+			if cnt >0:
+				out = "\n** Other JMP PTR [EBP] Gadgets **\n" 
+			if cnt >0:
+				bufA(out)
+			for i in range (cnt):
+				addy =0x0
+				cnt = 0   #
+				num = 0
+
+				addy = objs[o].listOP_JMP_PTR_OTHER_EBP[i]
+				num = objs[o].listOP_JMP_PTR_OTHER_EBP_NumOps[i]
+				mod = objs[o].listOP_JMP_PTR_OTHER_EBP_Module[i]
+				cnt = objs[o].listOP_JMP_PTR_OTHER_EBP_CNT[i]					
+				Reg="EBP"
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+				try:
+					addy=int(addy,16)
+					cat=disHereClean2Other(addy, cnt, num, "jmp", Reg)
+				except:
+					cat=disHereClean2Other(addy, cnt, num, "jmp", Reg)
+				if (not cat == "" ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+					if printStyle:
+						counter()
+						cat0= seperator + Ct () + "\t" + out + showCurrentMitigation()
+						cat=cat0+ cat
+					if not printStyle:
+						cat=cat+showCurrentMitigation()
+					bufA(cat)
+			counterReset()
+			o = o + 1
+		o = 0
+	except:
+		pass
+	o = 0
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_JMP_PTR_OTHER_ESP.__len__()
+			out = "\n** Other JMP PTR [ESP] Gadgets **\n" 
+			if cnt >0:
+				bufA(out)
+			for i in range (cnt):
+				addy =0x0
+				cnt = 0   #
+				num = 0
+
+				addy = objs[o].listOP_JMP_PTR_OTHER_ESP[i]
+				num = objs[o].listOP_JMP_PTR_OTHER_ESP_NumOps[i]
+				mod = objs[o].listOP_JMP_PTR_OTHER_ESP_Module[i]
+				cnt = objs[o].listOP_JMP_PTR_OTHER_ESP_CNT[i]
+				Reg="ESP"
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+				try:
+					addy=int(addy,16)
+					cat=disHereClean2Other(addy, cnt, num, "jmp", Reg)
+				except:
+					cat=disHereClean2Other(addy, cnt, num, "jmp", Reg)
+				if (not cat == "" ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+					if printStyle:
+						counter()
+						cat0= seperator + Ct () + "\t" + out + showCurrentMitigation()
+						cat=cat0+ cat
+					if not printStyle:
+						cat=cat+showCurrentMitigation()
+					bufA(cat)
+			val =objs[o].listOP_JMP_PTR_ESP.__len__()
+			total = val + total
+			counterReset()
+			o = o + 1
+		o = 0
+	except:
+		pass
+	o = 0	
+o = 0
+
+
+	
 def printlistOP_DG_Rare(NumOpsDis):
-	# print "in dg--rare"
-	sp()
 	global o
+	global directory
+	global printStyle
+	global bufCount
+	bufCount=0
+	seperator="\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 	idval = 1
 	clearHashChecker()
 	counterReset()
-	while os.path.exists("%s-Dispatcher Gadget - Alternative-ALL-%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"Dispatcher Gadget - Alternative-ALL-" + str(idval) + ".txt"
+	operation="Dispatcher Gadget - Alternative Form"
+	savePrintData("", operation)
 	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
+	dg="dg"
+	o=0
+	try:
 		dg="dg"
-		try:
-			dg="dg"
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_BaseDG_Rare_EAX.__len__()
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_BaseDG_Rare_EAX.__len__()
+			 
+			if cnt >0:
+				out = "** Dispatcher Gadget - Alternative Form - [EAX] Gadgets **\n"
+				bufA(out)			
+			for i in range (cnt):
+				dg="dg"
+				addy =0x0
+				cnt = 0   #
+				num = 0
 
-				out = "\n** Dispatcher Gadget - Alternative Form - [EAX] Gadgets **" 
-				if cnt >0:
-					print >> f, out
-					print >> f, cnt
-				for i in range (cnt):
-
-					dg="dg"
-					addy =0x0
-					cnt = 0   #
-					num = 0
-
-					addy = objs[o].listOP_BaseDG_Rare_EAX[i]
-					cnt = objs[o].listOP_BaseDG_Rare_CNT_EAX[i]
-					num = objs[o].listOP_BaseDG_Rare_NumOps_EAX[i]
-					mod = objs[o].listOP_BaseDG_Rare_Module_EAX[i]
-
-					print "dg-print --b "
-					sp()
-
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					out =  "\tMod: " + str(mod)
-					print >> f, Ct () + "\t" + out
-					Reg="EAX"
-					try:
-						addy=int(addy,16)
-						print >> f, disHereClean3(addy, cnt, num, dg)
-					except:
-						print >> f, disHereClean3(addy, cnt, num, dg)
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
+				addy = objs[o].listOP_BaseDG_Rare_EAX[i]
+				cnt = objs[o].listOP_BaseDG_Rare_CNT_EAX[i]
+				num = objs[o].listOP_BaseDG_Rare_NumOps_EAX[i]
+				mod = objs[o].listOP_BaseDG_Rare_Module_EAX[i]
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+				try:
+					addy=int(addy,16)
+					cat=disHereClean3(addy, cnt, num, dg)
+				except:
+					cat=disHereClean3(addy, cnt, num, dg)
+				if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+					if printStyle:
+						counter()
+						cat0= seperator + Ct () + "\t" + out + showCurrentMitigation()
+						cat=cat0+ cat
+					if not printStyle:
+						cat=cat+showCurrentMitigation()
+					bufA(cat)
+			counterReset()
+			o = o + 1
 		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_BaseDG_Rare_EBX.__len__()
-				out = "\n** Dispatcher Gadget - Alternative Form - [EBX] Gadgets **" 
-				if cnt >0:
-					print >> f, out
-				for i in range (cnt):
-					counter()
-
-					addy =0x0
-					cnt = 0   #
-					num = 0
-					addy = objs[o].listOP_BaseDG_Rare_EBX[i]
-					cnt = objs[o].listOP_BaseDG_Rare_CNT_EBX[i]
-					num = objs[o].listOP_BaseDG_Rare_NumOps_EBX[i]
-					mod = objs[o].listOP_BaseDG_Rare_Module_EBX[i]
-					Reg="EBX"
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					out =  "\tMod: " + str(mod)
-					print >> f, Ct () + "\t" + out
-					try:
-						addy=int(addy,16)
-						print >> f, disHereClean3(addy, cnt, num, dg)
-					except:
-						print >> f, disHereClean3(addy, cnt, num, dg)
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_BaseDG_Rare_ECX.__len__()
-				if cnt >0:
-					out = "\n** Dispatcher Gadget - Alternative Form - [ECX] Gadgets **" 
-					print >> f, out
-				for i in range (cnt):
-					counter()
-					addy =0x0
-					cnt = 0   #
-					num = 0
-					Reg="ECX"
-
-					addy = objs[o].listOP_BaseDG_Rare_ECX[i]
-					cnt = objs[o].listOP_BaseDG_Rare_CNT_ECX[i]
-					num = objs[o].listOP_BaseDG_Rare_NumOps_ECX[i]
-					mod = objs[o].listOP_BaseDG_Rare_Module_ECX[i]
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					out =  "\tMod: " + str(mod)
-					print >> f, Ct () + "\t" + out					
-					try:
-						addy=int(addy,16)
-						print >> f, disHereClean3(addy, cnt, num, dg)
-					except:
-						print >> f, disHereClean3(addy, cnt, num, dg)
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_BaseDG_Rare_EDX.__len__()
-				if cnt >0:
-					out = "\n** Dispatcher Gadget - Alternative Form - [EDX] Gadgets **" 
-					print >> f, out
-				for i in range (cnt):
-					counter()
-					addy =0x0
-					cnt = 0   #
-					num = 0
-
-					addy = objs[o].listOP_BaseDG_Rare_EDX[i]
-					cnt = objs[o].listOP_BaseDG_Rare_CNT_EDX[i]
-					num = objs[o].listOP_BaseDG_Rare_NumOps_EDX[i]
-					mod = objs[o].listOP_BaseDG_Rare_Module_EDX[i]
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					out =  "\tMod: " + str(mod)
-					print >> f, Ct () + "\t" + out					
-					Reg="EDX"
-					# print "edx??"
-					try:
-						addy=int(addy,16)
-						print >> f, disHereClean3(addy, cnt, num, dg)
-					except:
-						print >> f, disHereClean3(addy, cnt, num, dg)
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_BaseDG_Rare_EDI.__len__()
-				if cnt >0:
-					out = "\n** Dispatcher Gadget - Alternative Form - [EDI] Gadgets **" 
-					print >> f, out
-				for i in range (cnt):
-					counter()
-					addy =0x0
-					cnt = 0   #
-					num = 0
-
-					addy = objs[o].listOP_BaseDG_Rare_EDI[i]
-					cnt = objs[o].listOP_BaseDG_Rare_CNT_EDI[i]
-					num = objs[o].listOP_BaseDG_Rare_NumOps_EDI[i]
-					mod = objs[o].listOP_BaseDG_Rare_Module_EDI[i]
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					out =  "\tMod: " + str(mod)
-					print >> f, Ct () + "\t" + out					
-					Reg="EDI"
-					try:
-						addy=int(addy,16)
-						print >> f, disHereClean3(addy, cnt, num, dg)
-					except:
-						print >> f, disHereClean3(addy, cnt, num, dg)
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_BaseDG_Rare_ESI.__len__()
-				if cnt >0:
-					out = "\n** Dispatcher Gadget - Alternative Form - [ESI] Gadgets **" 
-					print >> f, out
-				for i in range (cnt):
-					counter()
-					addy =0x0
-					cnt = 0   #
-					num = 0
-
-					addy = objs[o].listOP_BaseDG_Rare_ESI[i]
-					cnt = objs[o].listOP_BaseDG_Rare_CNT_ESI[i]
-					num = objs[o].listOP_BaseDG_Rare_NumOps_ESI[i]
-					mod = objs[o].listOP_BaseDG_Rare_Module_ESI[i]		
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					out =  "\tMod: " + str(mod)
-					print >> f, Ct () + "\t" + out					
-					Reg="ESI"
-					try:
-						addy=int(addy,16)
-						print >> f, disHereClean3(addy, cnt, num, dg)
-					except:
-						print >> f, disHereClean3(addy, cnt, num, dg)
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_BaseDG_Rare_EBP.__len__()
-				if cnt >0:
-					out = "\n** Dispatcher Gadget - Alternative Form - [EBP] Gadgets **" 
-				if cnt >0:
-					print >> f, out
-				for i in range (cnt):
-					counter()
-					addy =0x0
-					cnt = 0   #
-					num = 0
-
-					addy = objs[o].listOP_BaseDG_Rare_EBP[i]
-					cnt = objs[o].listOP_BaseDG_Rare_CNT_EBP[i]
-					num = objs[o].listOP_BaseDG_Rare_NumOps_EBP[i]
-					mod = objs[o].listOP_BaseDG_Rare_Module_EBP[i]			
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					out =  "\tMod: " + str(mod)
-					print >> f, Ct () + "\t" + out
-					Reg="EBP"
-					try:
-						addy=int(addy,16)
-						print >> f, disHereClean3(addy, cnt, num, dg)
-					except:
-						print >> f, disHereClean3(addy, cnt, num, dg)
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_BaseDG_Rare_ESP.__len__()
-				out = "\n** Dispatcher Gadget - Alternative Form - [ESP] Gadgets **" 
-				if cnt >0:
-					print >> f, out
-				for i in range (cnt):
-					counter()
-					addy =0x0
-					cnt = 0   #
-					num = 0
-
-					addy = objs[o].listOP_BaseDG_Rare_ESP[i]
-					cnt = objs[o].listOP_BaseDG_Rare_CNT_ESP[i]
-					num = objs[o].listOP_BaseDG_Rare_NumOps_ESP[i]
-					mod = objs[o].listOP_BaseDG_Rare_Module_ESP[i]
-					Reg="ESP"
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					out =  "\tMod: " + str(mod)
-					print >> f, Ct () + "\t" + out					
-					try:
-						addy=int(addy,16)
-						print >> f, disHereClean3(addy, cnt, num, dg)
-					except:
-						print >> f, disHereClean3(addy, cnt, num, dg)
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0	
+	except:
+		pass
 	o = 0
-	# nope(filename, total)
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_BaseDG_Rare_EBX.__len__()
+			
+			if cnt >0:
+				out = "** Dispatcher Gadget - Alternative Form - [EBX] Gadgets **\n" 
+				bufA(out)
+			for i in range (cnt):
+				addy =0x0
+				cnt = 0   #
+				num = 0
+
+				addy = objs[o].listOP_BaseDG_Rare_EBX[i]
+				cnt = objs[o].listOP_BaseDG_Rare_CNT_EBX[i]
+				num = objs[o].listOP_BaseDG_Rare_NumOps_EBX[i]
+				mod = objs[o].listOP_BaseDG_Rare_Module_EBX[i]
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+				try:
+					addy=int(addy,16)
+					cat=disHereClean3(addy, cnt, num, dg)
+				except:
+					cat=disHereClean3(addy, cnt, num, dg)
+				if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+					if printStyle:
+						counter()
+						cat0= seperator + Ct () + "\t" + out + showCurrentMitigation()
+						cat=cat0+ cat
+					if not printStyle:
+						cat=cat+showCurrentMitigation()
+					bufA(cat)
+			counterReset()
+			o = o + 1
+		o = 0
+	except:
+		pass
+	o = 0
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_BaseDG_Rare_ECX.__len__()
+			if cnt >0:
+				out = "** Dispatcher Gadget - Alternative Form - [ECX] Gadgets **\n" 
+				bufA(out)
+			for i in range (cnt):
+				addy =0x0
+				cnt = 0   #
+				num = 0
+				addy = objs[o].listOP_BaseDG_Rare_ECX[i]
+				cnt = objs[o].listOP_BaseDG_Rare_CNT_ECX[i]
+				num = objs[o].listOP_BaseDG_Rare_NumOps_ECX[i]
+				mod = objs[o].listOP_BaseDG_Rare_Module_ECX[i]
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+				try:
+					addy=int(addy,16)
+					cat=disHereClean3(addy, cnt, num, dg)
+				except:
+					cat=disHereClean3(addy, cnt, num, dg)
+				if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+					if printStyle:
+						counter()
+						cat0= seperator + Ct () + "\t" + out + showCurrentMitigation()
+						cat=cat0+ cat
+					if not printStyle:
+						cat=cat+showCurrentMitigation()
+					bufA(cat)
+			counterReset()
+			o = o + 1
+		o = 0
+	except:
+		pass
+	o = 0
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_BaseDG_Rare_EDX.__len__()
+			if cnt >0:
+				out = "** Dispatcher Gadget - Alternative Form - [EDX] Gadgets **\n" 
+				bufA(out)
+			for i in range (cnt):
+				addy =0x0
+				cnt = 0   #
+				num = 0
+				addy = objs[o].listOP_BaseDG_Rare_EDX[i]
+				cnt = objs[o].listOP_BaseDG_Rare_CNT_EDX[i]
+				num = objs[o].listOP_BaseDG_Rare_NumOps_EDX[i]
+				mod = objs[o].listOP_BaseDG_Rare_Module_EDX[i]			
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+				try:
+					addy=int(addy,16)
+					cat=disHereClean3(addy, cnt, num, dg)
+				except:
+					cat=disHereClean3(addy, cnt, num, dg)
+				if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+					if printStyle:
+						counter()
+						cat0= seperator + Ct () + "\t" + out + showCurrentMitigation()
+						cat=cat0+ cat
+					if not printStyle:
+						cat=cat+showCurrentMitigation()
+					bufA(cat)
+			counterReset()
+			o = o + 1
+		o = 0
+	except:
+		pass
+	o = 0
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_BaseDG_Rare_EDI.__len__()
+			if cnt >0:
+				out = "** Dispatcher Gadget - Alternative Form - [EDI] Gadgets **\n" 
+				bufA(out)
+			for i in range (cnt):
+				addy =0x0
+				cnt = 0   #
+				num = 0
+				addy = objs[o].listOP_BaseDG_Rare_EDI[i]
+				cnt = objs[o].listOP_BaseDG_Rare_CNT_EDI[i]
+				num = objs[o].listOP_BaseDG_Rare_NumOps_EDI[i]
+				mod = objs[o].listOP_BaseDG_Rare_Module_EDI[i]	
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+				try:
+					addy=int(addy,16)
+					cat=disHereClean3(addy, cnt, num, dg)
+				except:
+					cat=disHereClean3(addy, cnt, num, dg)
+				if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+					if printStyle:
+						counter()
+						cat0= seperator + Ct () + "\t" + out + showCurrentMitigation()
+						cat=cat0+ cat
+					if not printStyle:
+						cat=cat+showCurrentMitigation()
+					bufA(cat)
+			counterReset()
+			o = o + 1
+		o = 0
+	except:
+		pass
+	o = 0
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_BaseDG_Rare_ESI.__len__()
+			if cnt >0:
+				out = "** Dispatcher Gadget - Alternative Form - [ESI] Gadgets **\n" 
+				bufA(out)
+			for i in range (cnt):
+				addy =0x0
+				cnt = 0   #
+				num = 0
+				addy = objs[o].listOP_BaseDG_Rare_ESI[i]
+				cnt = objs[o].listOP_BaseDG_Rare_CNT_ESI[i]
+				num = objs[o].listOP_BaseDG_Rare_NumOps_ESI[i]
+				mod = objs[o].listOP_BaseDG_Rare_Module_ESI[i]		
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+				try:
+					addy=int(addy,16)
+					cat=disHereClean3(addy, cnt, num, dg)
+				except:
+					cat=disHereClean3(addy, cnt, num, dg)
+				if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+					if printStyle:
+						counter()
+						cat0= seperator + Ct () + "\t" + out + showCurrentMitigation()
+						cat=cat0+ cat
+					if not printStyle:
+						cat=cat+showCurrentMitigation()
+					bufA(cat)
+			counterReset()
+			o = o + 1
+		o = 0
+	except:
+		pass
+	o = 0
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_BaseDG_Rare_EBP.__len__()
+			if cnt >0:
+				out = "** Dispatcher Gadget - Alternative Form - [EBP] Gadgets **\n" 
+			if cnt >0:
+				bufA(out)
+			for i in range (cnt):
+				addy =0x0
+				cnt = 0   #
+				num = 0
+				addy = objs[o].listOP_BaseDG_Rare_EBP[i]
+				cnt = objs[o].listOP_BaseDG_Rare_CNT_EBP[i]
+				num = objs[o].listOP_BaseDG_Rare_NumOps_EBP[i]
+				mod = objs[o].listOP_BaseDG_Rare_Module_EBP[i]				
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+				try:
+					addy=int(addy,16)
+					cat=disHereClean3(addy, cnt, num, dg)
+				except:
+					cat=disHereClean3(addy, cnt, num, dg)
+				if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+					if printStyle:
+						counter()
+						cat0= seperator + Ct () + "\t" + out + showCurrentMitigation()
+						cat=cat0+ cat
+					if not printStyle:
+						cat=cat+showCurrentMitigation()
+					bufA(cat)
+			counterReset()
+			o = o + 1
+		o = 0
+	except:
+		pass
+	o = 0
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_BaseDG_Rare_ESP.__len__()
+			if cnt >0:
+				out = "** Dispatcher Gadget - Alternative Form - [ESP] Gadgets **\n"
+				bufA(out)
+			for i in range (cnt):
+				addy =0x0
+				cnt = 0   #
+				num = 0
+				addy = objs[o].listOP_BaseDG_Rare_ESP[i]
+				cnt = objs[o].listOP_BaseDG_Rare_CNT_ESP[i]
+				num = objs[o].listOP_BaseDG_Rare_NumOps_ESP[i]
+				mod = objs[o].listOP_BaseDG_Rare_Module_ESP[i]
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+				try:
+					addy=int(addy,16)
+					cat=disHereClean3(addy, cnt, num, dg)
+				except:
+					cat=disHereClean3(addy, cnt, num, dg)
+				if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+					if printStyle:
+						counter()
+						cat0= seperator + Ct () + "\t" + out + showCurrentMitigation()
+						cat=cat0+ cat
+					if not printStyle:
+						cat=cat+showCurrentMitigation()
+					bufA(cat)
+			counterReset()
+			o = o + 1
+		o = 0
+	except:
+		pass
+	o = 0	
+o = 0
+
+
+
+	
 def printlistOP_JMP_PTR_EMPTY(NumOpsDis):
 	global o
+	global directory
+	global printStyle
+	global bufCount
+	bufCount=0
+	seperator="\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 	idval = 1
 	clearHashChecker()
 	counterReset()
-	while os.path.exists("%s-JMP PTR EMPTY ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"JMP PTR EMPTY ALL_" + str(idval) + ".txt"
+	operation="JMP PTR EMPTY ALL2"
+	savePrintData("", operation)
 	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_JMP_PTR_EMPTY_EAX.__len__()
-				out = "\n** Empty JMP PTR [EAX] Gadgets **" 
-				if cnt >0:
-					print >> f, out
-				for i in range (cnt):
-					counter()
-					addy =0x0
-					cnt = 0   #
-					num = 0
-					addy = objs[o].listOP_JMP_PTR_EMPTY_EAX[i]
-					cnt = objs[o].listOP_JMP_PTR_EMPTY_EAX_CNT[i]
-					num = objs[o].listOP_JMP_PTR_EMPTY_EAX_NumOps[i]
-					mod = objs[o].listOP_JMP_PTR_EMPTY_EAX_Module[i]
-					out = "Ops: " + str(num) + "\tMod: " + str(mod)
-					Reg="EAX"
-					try:
-						addy=int(addy,16)
-						print >> f, disHereJMPPTR2_CLEAN(addy, num, mod, Reg)
-					except:
-						print >> f, disHereJMPPTR2_CLEAN(addy, num, mod, Reg)
-				val =objs[o].listOP_JMP_PTR_EAX.__len__()
-				total = val + total
-				#print out
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_JMP_PTR_EMPTY_EBX.__len__()
-				out = "\n** Empty JMP PTR [EBX] Gadgets **" 
-				if cnt >0:
-					print >> f, out
-				for i in range (cnt):
-					counter()
+	o=0
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_JMP_PTR_EMPTY_EAX.__len__()
+			 
+			if cnt >0:
+				out = "\n**Empty JMP PTR [EAX] Gadgets **\n"
+				bufA(out)			
+			for i in range (cnt):
+				counter()
+				addy =0x0
+				cnt = 0   #
+				num = 0
+				Reg="EAX"
+				addy = objs[o].listOP_JMP_PTR_EMPTY_EAX[i]
+				num = objs[o].listOP_JMP_PTR_EMPTY_EAX_NumOps[i]
+				mod = objs[o].listOP_JMP_PTR_EMPTY_EAX_Module[i]
+				
+				try:
+					addy=int(addy,16)
+					cat=disHereJMPPTR2_CLEAN(addy, num, mod, Reg) + " # "  + showCurrentMitigation()
+				except:
+					cat=disHereJMPPTR2_CLEAN(addy, num, mod, Reg) + " # "  + showCurrentMitigation()
+				if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
 
-					addy =0x0
-					cnt = 0   #
-					num = 0
-					addy = objs[o].listOP_JMP_PTR_EMPTY_EBX[i]
-					num = objs[o].listOP_JMP_PTR_EMPTY_EBX_NumOps[i]
-					mod = objs[o].listOP_JMP_PTR_EMPTY_EBX_Module[i]
-					Reg="EBX"
-					try:
-						addy=int(addy,16)
-						print >> f, disHereJMPPTR2_CLEAN(addy, num, mod, Reg)
-					except:
-						print >> f, disHereJMPPTR2_CLEAN(addy, num, mod, Reg)
-				val =objs[o].listOP_JMP_PTR_EBX.__len__()
-				total = val + total
-				#print out
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
+					bufA(cat)
+			counterReset()
+			o = o + 1
 		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_JMP_PTR_EMPTY_ECX.__len__()
-				if cnt >0:
-					out = "\n** Empty JMP PTR [ECX] Gadgets **" 
-					print >> f, out
-				for i in range (cnt):
-					counter()
-					addy =0x0
-					cnt = 0   #
-					num = 0
-					Reg="ECX"
-					addy = objs[o].listOP_JMP_PTR_EMPTY_ECX[i]
-					num = objs[o].listOP_JMP_PTR_EMPTY_ECX_NumOps[i]
-					mod = objs[o].listOP_JMP_PTR_EMPTY_ECX_Module[i]
-					try:
-						addy=int(addy,16)
-						print >> f, disHereJMPPTR2_CLEAN(addy, num, mod, Reg)
-					except:
-						print >> f, disHereJMPPTR2_CLEAN(addy, num, mod, Reg)
-				val =objs[o].listOP_JMP_PTR_ECX.__len__()
-				total = val + total
-				#print out
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_JMP_PTR_EMPTY_EDX.__len__()
-				if cnt >0:
-					out = "\n** Empty JMP PTR [EDX] Gadgets **" 
-					print >> f, out
-				for i in range (cnt):
-					counter()
-					addy =0x0
-					cnt = 0   #
-					num = 0
-					addy = objs[o].listOP_JMP_PTR_EMPTY_EDX[i]
-					num = objs[o].listOP_JMP_PTR_EMPTY_EDX_NumOps[i]
-					mod = objs[o].listOP_JMP_PTR_EMPTY_EDX_Module[i]
-					Reg="EDX"
-					# print "edx??"
-					try:
-						addy=int(addy,16)
-						print >> f, disHereJMPPTR2_CLEAN(addy, num, mod, Reg)
-					except:
-						print >> f, disHereJMPPTR2_CLEAN(addy, num, mod, Reg)
-				val =objs[o].listOP_JMP_PTR_EDX.__len__()
-				total = val + total
-				#print out
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_JMP_PTR_EMPTY_EDI.__len__()
-				if cnt >0:
-					out = "\n** Empty JMP PTR [EDI] Gadgets **" 
-					print >> f, out
-				for i in range (cnt):
-					counter()
-					addy =0x0
-					cnt = 0   #
-					num = 0
-					addy = objs[o].listOP_JMP_PTR_EMPTY_EDI[i]
-					num = objs[o].listOP_JMP_PTR_EMPTY_EDI_NumOps[i]
-					mod = objs[o].listOP_JMP_PTR_EMPTY_EDI_Module[i]
-					Reg="EDI"
-					try:
-						addy=int(addy,16)
-						print >> f, disHereJMPPTR2_CLEAN(addy, num, mod, Reg)
-					except:
-						print >> f, disHereJMPPTR2_CLEAN(addy, num, mod, Reg)
-				val =objs[o].listOP_JMP_PTR_EDI.__len__()
-				total = val + total
-				#print out
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_JMP_PTR_EMPTY_ESI.__len__()
-				if cnt >0:
-					out = "\n** Empty JMP PTR [ESI] Gadgets **" 
-					print >> f, out
-				for i in range (cnt):
-					counter()
-					addy =0x0
-					cnt = 0   #
-					num = 0
-					addy = objs[o].listOP_JMP_PTR_EMPTY_ESI[i]
-					num = objs[o].listOP_JMP_PTR_EMPTY_ESI_NumOps[i]
-					mod = objs[o].listOP_JMP_PTR_EMPTY_ESI_Module[i]
-					Reg="ESI"
-					try:
-						addy=int(addy,16)
-						print >> f, disHereJMPPTR2_CLEAN(addy, num, mod, Reg)
-					except:
-						print >> f, disHereJMPPTR2_CLEAN(addy, num, mod, Reg)
-				val =objs[o].listOP_JMP_PTR_ESI.__len__()
-				total = val + total
-				#print out
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_JMP_PTR_EMPTY_EBP.__len__()
-				if cnt >0:
-					out = "\n** Empty JMP PTR [EBP] Gadgets **" 
-				if cnt >0:
-					print >> f, out
-				for i in range (cnt):
-					counter()
-					addy =0x0
-					cnt = 0   #
-					num = 0
-					addy = objs[o].listOP_JMP_PTR_EMPTY_EBP[i]
-					num = objs[o].listOP_JMP_PTR_EMPTY_EBP_NumOps[i]
-					mod = objs[o].listOP_JMP_PTR_EMPTY_EBP_Module[i]
-					Reg="EBP"
-					try:
-						addy=int(addy,16)
-						print >> f, disHereJMPPTR2_CLEAN(addy, num, mod, Reg)
-					except:
-						print >> f, disHereJMPPTR2_CLEAN(addy, num, mod, Reg)
-				val =objs[o].listOP_JMP_PTR_EBP.__len__()
-				total = val + total
-				#print out
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0
-		try:
-			for obj in objs:
-				i=0
-				cnt = objs[o].listOP_JMP_PTR_EMPTY_ESP.__len__()
-				out = "\n** Empty JMP PTR [ESP] Gadgets **" 
-				if cnt >0:
-					print >> f, out
-				for i in range (cnt):
-					counter()
-					addy =0x0
-					cnt = 0   #
-					num = 0
-					addy = objs[o].listOP_JMP_PTR_EMPTY_ESP[i]
-					num = objs[o].listOP_JMP_PTR_EMPTY_ESP_NumOps[i]
-					mod = objs[o].listOP_JMP_PTR_EMPTY_ESP_Module[i]
-					Reg="ESP"
-					try:
-						addy=int(addy,16)
-						print >> f, disHereJMPPTR2_CLEAN(addy, num, mod, Reg)
-					except:
-						print >> f, disHereJMPPTR2_CLEAN(addy, num, mod, Reg)
-				val =objs[o].listOP_JMP_PTR_ESP.__len__()
-				total = val + total
-				#print out
-				counterReset()
-				o = o + 1
-			o = 0
-		except:
-			pass
-		o = 0	
+	except:
+		pass
 	o = 0
-	# nope(filename, total)
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_JMP_PTR_EMPTY_EBX.__len__()
+			
+			if cnt >0:
+				out = "\n**Empty JMP PTR [EBX] Gadgets **\n" 
+				bufA(out)
+			for i in range (cnt):
+				counter()
+				addy =0x0
+				cnt = 0   #
+				num = 0
+
+				addy =0x0
+				cnt = 0   #
+				num = 0
+				addy = objs[o].listOP_JMP_PTR_EMPTY_EBX[i]
+				num = objs[o].listOP_JMP_PTR_EMPTY_EBX_NumOps[i]
+				mod = objs[o].listOP_JMP_PTR_EMPTY_EBX_Module[i]
+				Reg="EBX"
+				
+				try:
+					addy=int(addy,16)
+					cat=disHereJMPPTR2_CLEAN(addy, num, mod, Reg) + " # "  + showCurrentMitigation()
+				except:
+					cat=disHereJMPPTR2_CLEAN(addy, num, mod, Reg) + " # "  + showCurrentMitigation()
+				if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+
+					bufA(cat)
+			counterReset()
+			o = o + 1
+		o = 0
+	except:
+		pass
+	o = 0
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_JMP_PTR_EMPTY_ECX.__len__()
+			if cnt >0:
+				out = "\n**Empty JMP PTR [ECX] Gadgets **\n" 
+				bufA(out)
+			for i in range (cnt):
+				counter()
+				addy =0x0
+				cnt = 0   #
+				num = 0
+				num = 0
+				Reg="ECX"
+				addy = objs[o].listOP_JMP_PTR_EMPTY_ECX[i]
+				num = objs[o].listOP_JMP_PTR_EMPTY_ECX_NumOps[i]
+				mod = objs[o].listOP_JMP_PTR_EMPTY_ECX_Module[i]
+				
+				try:
+					addy=int(addy,16)
+					cat=disHereJMPPTR2_CLEAN(addy, num, mod, Reg) + " # "  + showCurrentMitigation()
+				except:
+					cat=disHereJMPPTR2_CLEAN(addy, num, mod, Reg) + " # "  + showCurrentMitigation()
+				if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+
+					bufA(cat)
+			counterReset()
+			o = o + 1
+		o = 0
+	except:
+		pass
+	o = 0
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_JMP_PTR_EMPTY_EDX.__len__()
+			if cnt >0:
+				out = "\n**Empty JMP PTR [EDX] Gadgets **\n" 
+				bufA(out)
+			for i in range (cnt):
+				counter()
+				addy =0x0
+				cnt = 0   #
+				num = 0
+				addy = objs[o].listOP_JMP_PTR_EMPTY_EDX[i]
+				num = objs[o].listOP_JMP_PTR_EMPTY_EDX_NumOps[i]
+				mod = objs[o].listOP_JMP_PTR_EMPTY_EDX_Module[i]
+				Reg="EDX"		
+				
+				try:
+					addy=int(addy,16)
+					cat=disHereJMPPTR2_CLEAN(addy, num, mod, Reg) + " # "  + showCurrentMitigation()
+				except:
+					cat=disHereJMPPTR2_CLEAN(addy, num, mod, Reg) + " # "  + showCurrentMitigation()
+				if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+
+					bufA(cat)
+			counterReset()
+			o = o + 1
+		o = 0
+	except:
+		pass
+	o = 0
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_JMP_PTR_EMPTY_EDI.__len__()
+			if cnt >0:
+				out = "\n**Empty JMP PTR [EDI] Gadgets **\n" 
+				bufA(out)
+			for i in range (cnt):
+				counter()
+				addy =0x0
+				cnt = 0   #
+				num = 0
+				addy = objs[o].listOP_JMP_PTR_EMPTY_EDI[i]
+				num = objs[o].listOP_JMP_PTR_EMPTY_EDI_NumOps[i]
+				mod = objs[o].listOP_JMP_PTR_EMPTY_EDI_Module[i]
+				Reg="EDI"	
+				
+				try:
+					addy=int(addy,16)
+					cat=disHereJMPPTR2_CLEAN(addy, num, mod, Reg) + " # "  + showCurrentMitigation()
+				except:
+					cat=disHereJMPPTR2_CLEAN(addy, num, mod, Reg) + " # "  + showCurrentMitigation()
+				if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+
+					bufA(cat)
+			counterReset()
+			o = o + 1
+		o = 0
+	except:
+		pass
+	o = 0
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_JMP_PTR_EMPTY_ESI.__len__()
+			if cnt >0:
+				out = "\n**Empty JMP PTR [ESI] Gadgets **\n" 
+				bufA(out)
+			for i in range (cnt):
+				counter()
+				addy =0x0
+				cnt = 0   #
+				num = 0
+				addy = objs[o].listOP_JMP_PTR_EMPTY_ESI[i]
+				num = objs[o].listOP_JMP_PTR_EMPTY_ESI_NumOps[i]
+				mod = objs[o].listOP_JMP_PTR_EMPTY_ESI_Module[i]
+				Reg="ESI"	
+				
+				try:
+					addy=int(addy,16)
+					cat=disHereJMPPTR2_CLEAN(addy, num, mod, Reg) + " # "  + showCurrentMitigation()
+				except:
+					cat=disHereJMPPTR2_CLEAN(addy, num, mod, Reg) + " # "  + showCurrentMitigation()
+				if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+
+					bufA(cat)
+			counterReset()
+			o = o + 1
+		o = 0
+	except:
+		pass
+	o = 0
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_JMP_PTR_EMPTY_EBP.__len__()
+			if cnt >0:
+				out = "\n**Empty JMP PTR [EBP] Gadgets **\n" 
+			if cnt >0:
+				bufA(out)
+			for i in range (cnt):
+				counter()
+				addy =0x0
+				cnt = 0   #
+				num = 0
+				addy = objs[o].listOP_JMP_PTR_EMPTY_EBP[i]
+				num = objs[o].listOP_JMP_PTR_EMPTY_EBP_NumOps[i]
+				mod = objs[o].listOP_JMP_PTR_EMPTY_EBP_Module[i]
+				Reg="EBP"			
+				
+				try:
+					addy=int(addy,16)
+					cat=disHereJMPPTR2_CLEAN(addy, num, mod, Reg) + " # "  + showCurrentMitigation()
+				except:
+					cat=disHereJMPPTR2_CLEAN(addy, num, mod, Reg) + " # "  + showCurrentMitigation()
+				if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+
+					bufA(cat)
+			counterReset()
+			o = o + 1
+		o = 0
+	except:
+		pass
+	o = 0
+	try:
+		for obj in objs:
+			i=0
+			cnt = objs[o].listOP_JMP_PTR_EMPTY_ESP.__len__()
+			if cnt >0:
+				out = "\n**Empty JMP PTR [ESP] Gadgets **\n"
+				bufA(out)
+			for i in range (cnt):
+				counter()
+				addy =0x0
+				cnt = 0   #
+				num = 0
+				addy = objs[o].listOP_JMP_PTR_EMPTY_ESP[i]
+				num = objs[o].listOP_JMP_PTR_EMPTY_ESP_NumOps[i]
+				mod = objs[o].listOP_JMP_PTR_EMPTY_ESP_Module[i]
+				Reg="ESP"
+				
+				try:
+					addy=int(addy,16)
+					cat=disHereJMPPTR2_CLEAN(addy, num, mod, Reg) + " # "  + showCurrentMitigation()
+				except:
+					cat=disHereJMPPTR2_CLEAN(addy, num, mod, Reg) + " # "  + showCurrentMitigation()
+				if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+
+					bufA(cat)
+			counterReset()
+			o = o + 1
+		o = 0
+	except:
+		pass
+	o = 0	
+o = 0
+
 
 
 def printlistOP_RET(NumOpsDis):
 	global o
+	global directory
 	idval = 1
 	clearHashChecker()
 	counterReset()
-	while os.path.exists("%s-RET ALL_%s.txt" % (peName, idval)):
+	o=0
+
+	while os.path.exists("%s%s-RET ALL_%s.txt" % (directory, peName, idval)):
 	    idval += 1
-	filename = peName +"-"+"RET ALL_" + str(idval) + ".txt"
+	filename = directory+peName +"-"+"RET ALL_" + str(idval) + ".txt"
 	global fname
 	fname= filename
 	with open(filename, 'a') as f:
@@ -16240,7 +19580,7 @@ def printlistOP_RET(NumOpsDis):
 				cnt = objs[o].listOP_RET_CNT[i]
 				num = objs[o].listOP_RET_NumOps[i]
 				mod = objs[o].listOP_RET_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
 
 				print >> f, Ct () + "\t" + out
 				#print disHereClean(addy, cnt, num, "jmp")
@@ -16260,12 +19600,14 @@ def printlistOP_RET(NumOpsDis):
 
 def printlistOP_RET_POP_EDI(NumOpsDis):
 	global o
+	global directory
+	o=0
 	idval = 1
 	clearHashChecker()
 	counterReset()
-	while os.path.exists("%s-RET_EDI_%s.txt" % (peName, idval)):
+	while os.path.exists("%s%s-RET_EDI_%s.txt" % (directory, peName, idval)):
 	    idval += 1
-	filename = peName +"-"+"RET_EDI_" + str(idval) + ".txt"
+	filename = directory + peName +"-"+"RET_EDI_" + str(idval) + ".txt"
 	global fname
 	fname= filename
 	with open(filename, 'a') as f:
@@ -16284,7 +19626,7 @@ def printlistOP_RET_POP_EDI(NumOpsDis):
 				cnt = objs[o].listOP_RET_Pop_EDI_CNT[i]
 				num = objs[o].listOP_RET_Pop_EDI_NumOps[i]
 				mod = objs[o].listOP_RET_Pop_EDI_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
 
 				print >> f, Ct () + "\t" + out
 				#print disHereClean(addy, cnt, num, "jmp")
@@ -16307,11 +19649,13 @@ def printlistOP_RET_POP_EDI(NumOpsDis):
 
 def printlistOP_Ret_Pop(NumOpsDis, Reg):
 	global o
+	global directory
+	o=0
 	clearHashChecker()
 	idval = 1
-	while os.path.exists("%s-RET_POP_OP_%s_%s.txt" % (peName, Reg, idval)):
+	while os.path.exists("%s%s-RET_POP_OP_%s_%s.txt" % (directory, peName, Reg, idval)):
 	    idval += 1
-	filename = peName +"-"+"RET_POP_OP_"+Reg+"_" + str( idval) + ".txt"
+	filename = directory + peName +"-"+"RET_POP_OP_"+Reg+"_" + str( idval) + ".txt"
 	global fname
 	fname= filename
 	with open(filename, 'a') as f:
@@ -16325,7 +19669,7 @@ def printlistOP_Ret_Pop(NumOpsDis, Reg):
 
 			if Reg == "EAX":
 				cnt1 = objs[o].listOP_RET_Pop_EAX.__len__()
-				print "real out: " + str(cnt1)
+				# print "real out: " + str(cnt1)
 			if Reg == "EBX":
 				cnt1 = objs[o].listOP_RET_Pop_EBX.__len__()
 			if Reg == "ECX":
@@ -16389,7 +19733,7 @@ def printlistOP_Ret_Pop(NumOpsDis, Reg):
 					cnt = objs[o].listOP_RET_Pop_ESP_CNT[i]
 					num = objs[o].listOP_RET_Pop_ESP_NumOps[i]
 					mod = objs[o].listOP_RET_Pop_ESP_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod) 
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t"  
 				##print out
 				cat = disHereClean3(addy, cnt, num, "ret")
 
@@ -16424,6 +19768,7 @@ def printlistOP_Ret_Pop(NumOpsDis, Reg):
 def printlistOP_RET_POPold(NumOpsDis):
 	global o
 	idval = 1
+	o=0
 	clearHashChecker()
 	counterReset()
 	while os.path.exists("%s-RET_POP_ALL_%s.txt" % (peName, idval)):
@@ -16447,7 +19792,7 @@ def printlistOP_RET_POPold(NumOpsDis):
 				cnt = objs[o].listOP_RET_Pop_CNT[i]
 				num = objs[o].listOP_RET_Pop_NumOps[i]
 				mod = objs[o].listOP_RET_Pop_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
 
 				print >> f, Ct () + "\t" + out
 				#print disHereClean(addy, cnt, num, "jmp")
@@ -16465,968 +19810,925 @@ def printlistOP_RET_POPold(NumOpsDis):
 	o = 0
 	nope(filename, total)
 
-def printlistOP_JMP_PTR_EBX(NumOpsDis):
-	global o
-	idval = 1
-	clearHashChecker()
-	counterReset()
-	while os.path.exists("%s-JMP PTR EBX ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"JMP PTR EBX ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_JMP_PTR_EBX.__len__()
-			for i in range (cnt):
-
-				print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-				counter()
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_JMP_PTR_EBX[i]
-				cnt = objs[o].listOP_JMP_PTR_EBX_CNT[i]
-				num = objs[o].listOP_JMP_PTR_EBX_NumOps[i]
-				mod = objs[o].listOP_JMP_PTR_EBX_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-
-				print >> f, Ct () + "\t" + out
-				#print disHereClean(addy, cnt, num, "jmp")
-				print >> f, disHereClean2(addy, cnt, num, "jmp")
-			val =objs[o].listOP_JMP_PTR_EBX.__len__()
-			total = val + total
-			out = "# JMP PTR [EBX] total" " + str(val)"
-			#print out
-			print >> f, out
-			counterReset()
-			o = o + 1
-		out = ""#"# Grand total JMP PTR [EBX] total" " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	nope(filename, total)
-
-def printlistOP_JMP_PTR_ECX(NumOpsDis):
-	global o
-	idval = 1
-	clearHashChecker()
-	counterReset()
-	while os.path.exists("%s-JMP PTR ECX ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"JMP PTR ECX ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_JMP_PTR_ECX.__len__()
-			for i in range (cnt):
-
-				print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-				counter()
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_JMP_PTR_ECX[i]
-				cnt = objs[o].listOP_JMP_PTR_ECX_CNT[i]
-				num = objs[o].listOP_JMP_PTR_ECX_NumOps[i]
-				mod = objs[o].listOP_JMP_PTR_ECX_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-
-				print >> f, Ct () + "\t" + out
-				#print disHereClean(addy, cnt, num, "jmp")
-				print >> f, disHereClean2(addy, cnt, num, "jmp")
-			val =objs[o].listOP_JMP_PTR_ECX.__len__()
-			total = val + total
-			out = "# JMP PTR [ECX] total" " + str(val)"
-			#print out
-			print >> f, out
-			counterReset()
-			o = o + 1
-		out = ""#"# Grand total JMP PTR [ECX] total" " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	nope(filename, total)
-
-def printlistOP_JMP_PTR_EDX(NumOpsDis):
-	global o
-	idval = 1
-	clearHashChecker()
-	counterReset()
-	while os.path.exists("%s-JMP PTR EDX ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"JMP PTR EDX ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_JMP_PTR_EDX.__len__()
-			for i in range (cnt):
-
-				print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-				counter()
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_JMP_PTR_EDX[i]
-				cnt = objs[o].listOP_JMP_PTR_EDX_CNT[i]
-				num = objs[o].listOP_JMP_PTR_EDX_NumOps[i]
-				mod = objs[o].listOP_JMP_PTR_EDX_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-
-				print >> f, Ct () + "\t" + out
-				print >> f, disHereClean2(addy, cnt, num, "jmp")
-			val =objs[o].listOP_JMP_PTR_EDX.__len__()
-			total = val + total
-			out = "# JMP PTR [EDX] total" " + str(val)"
-			#print out
-			print >> f, out
-			counterReset()
-			o = o + 1
-
-	o = 0
-	nope(filename, total)
-
-def printlistOP_JMP_PTR_ESI(NumOpsDis):
-	global o
-	idval = 1
-	clearHashChecker()
-	counterReset()
-	while os.path.exists("%s-JMP PTR ESI ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"JMP PTR ESI ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_JMP_PTR_ESI.__len__()
-			for i in range (cnt):
-
-				print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-				counter()
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_JMP_PTR_ESI[i]
-				cnt = objs[o].listOP_JMP_PTR_ESI_CNT[i]
-				num = objs[o].listOP_JMP_PTR_ESI_NumOps[i]
-				mod = objs[o].listOP_JMP_PTR_ESI_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-
-				print >> f, Ct () + "\t" + out
-				print >> f, disHereClean2(addy, cnt, num, "jmp")
-			val =objs[o].listOP_JMP_PTR_ESI.__len__()
-			total = val + total
-			out = "# JMP PTR [ESI] total" " + str(val)"
-			#print out
-			print >> f, out
-			counterReset()
-			o = o + 1
-		out = ""#"# Grand total JMP PTR [ESI] total" " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	nope(filename, total)
-
-def printlistOP_JMP_PTR_EDI(NumOpsDis):
-	global o
-	idval = 1
-	clearHashChecker()
-	counterReset()
-	while os.path.exists("%s-JMP PTR EDI ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"JMP PTR EDI ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_JMP_PTR_EDI.__len__()
-			for i in range (cnt):
-
-				print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-				counter()
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_JMP_PTR_EDI[i]
-				cnt = objs[o].listOP_JMP_PTR_EDI_CNT[i]
-				num = objs[o].listOP_JMP_PTR_EDI_NumOps[i]
-				mod = objs[o].listOP_JMP_PTR_EDI_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-
-				print >> f, Ct () + "\t" + out
-				print >> f, disHereClean2(addy, cnt, num, "jmp")
-			val =objs[o].listOP_JMP_PTR_EDI.__len__()
-			total = val + total
-			out = "# JMP PTR [EDI] total" " + str(val)"
-			#print out
-			print >> f, out
-			counterReset()
-			o = o + 1
-		out = ""#"# Grand total JMP PTR [EDI] total" " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	nope(filename, total)
-
-def printlistOP_JMP_PTR_EBP(NumOpsDis):
-	global o
-	idval = 1
-	clearHashChecker()
-	counterReset()
-	while os.path.exists("%s-JMP PTR EBP ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"JMP PTR EBP ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_JMP_PTR_EBP.__len__()
-			for i in range (cnt):
-
-				print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-				counter()
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_JMP_PTR_EBP[i]
-				cnt = objs[o].listOP_JMP_PTR_EBP_CNT[i]
-				num = objs[o].listOP_JMP_PTR_EBP_NumOps[i]
-				mod = objs[o].listOP_JMP_PTR_EBP_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-
-				print >> f, Ct () + "\t" + out
-				print >> f, disHereClean2(addy, cnt, num, "jmp")
-			val =objs[o].listOP_JMP_PTR_EBP.__len__()
-			total = val + total
-			out = "# JMP PTR [EBP] total" " + str(val)"
-			#print out
-			print >> f, out
-			counterReset()
-			o = o + 1
-		out = ""#"# Grand total JMP PTR [EBP] total" " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	nope(filename, total)
-
-
-def printlistOP_JMP_PTR_ESP(NumOpsDis):
-	global o
-	idval = 1
-	clearHashChecker()
-	counterReset()
-	while os.path.exists("%s-JMP PTR ESP ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"JMP PTR ESP ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_JMP_PTR_ESP.__len__()
-			for i in range (cnt):
-
-				print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-				counter()
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_JMP_PTR_ESP[i]
-				cnt = objs[o].listOP_JMP_PTR_ESP_CNT[i]
-				num = objs[o].listOP_JMP_PTR_ESP_NumOps[i]
-				mod = objs[o].listOP_JMP_PTR_ESP_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-
-				print >> f, Ct () + "\t" + out
-				print >> f, disHereClean2(addy, cnt, num, "jmp")
-			val =objs[o].listOP_JMP_PTR_ESP.__len__()
-			total = val + total
-			out = "# JMP PTR [ESP] total" " + str(val)"
-			#print out
-			print >> f, out
-			counterReset()
-			o = o + 1
-		out = ""#"# Grand total JMP PTR [ESP] total" " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	nope(filename, total)
-
 
 
 def printlistOP_CALL_EAX(NumOpsDis):
 	global o
+	global printStyle
 	idval = 1
+	o=0
 	clearHashChecker()
-	while os.path.exists("%s-CALL EAX ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"CALL EAX ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_CALL_EAX.__len__()
-			for i in range (cnt):
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_CALL_EAX[i]
-				cnt = objs[o].listOP_CALL_EAX_CNT[i]
-				num = objs[o].listOP_CALL_EAX_NumOps[i]
-				mod = objs[o].listOP_CALL_EAX_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean2(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+	operation="My CALL EAX ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_CALL_EAX.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_CALL_EAX[i]
+			cnt = objs[o].listOP_CALL_EAX_CNT[i]
+			num = objs[o].listOP_CALL_EAX_NumOps[i]
+			mod = objs[o].listOP_CALL_EAX_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			val =objs[o].listOP_CALL_EAX.__len__()
-			total = val + total
-			counterReset()
-			o = o + 1
-		out = "JOP ROCKET"
-		print >> f, out
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_CALL_EAX.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
 	o = 0
-	if total == 0:
-		nope(filename, total)
-	nope2(filename, total, objs[0].listOP_CALL_EAX[0])
-
 
 def printlistOP_CALL_EBX(NumOpsDis):
+	global printStyle
 	global o
 	idval = 1
 	clearHashChecker()
-	while os.path.exists("%s-CALL EBX ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"CALL EBX ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_CALL_EBX.__len__()
-			for i in range (cnt):
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_CALL_EBX[i]
-				cnt = objs[o].listOP_CALL_EBX_CNT[i]
-				num = objs[o].listOP_CALL_EBX_NumOps[i]
-				mod = objs[o].listOP_CALL_EBX_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean2(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+	o=0
+	operation="CALL EBX ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_CALL_EBX.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_CALL_EBX[i]
+			cnt = objs[o].listOP_CALL_EBX_CNT[i]
+			num = objs[o].listOP_CALL_EBX_NumOps[i]
+			mod = objs[o].listOP_CALL_EBX_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			val =objs[o].listOP_CALL_EBX.__len__()
-			total = val + total
-			print >> f, out
-			counterReset()
-			o = o + 1
-		out = "JOP ROCKET"#"# Grand total CALL EBX total: " + str(total)
-		print >> f, out
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_CALL_EBX.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
 	o = 0
-	if total == 0:
-		nope(filename, total)
-	nope2(filename, total, objs[0].listOP_CALL_EBX[0])
-
+	
 def printlistOP_CALL_ECX(NumOpsDis):
+	global printStyle
 	global o
 	idval = 1
-	while os.path.exists("%s-CALL ECX ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"CALL ECX ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_CALL_ECX.__len__()
-			for i in range (cnt):
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_CALL_ECX[i]
-				cnt = objs[o].listOP_CALL_ECX_CNT[i]
-				num = objs[o].listOP_CALL_ECX_NumOps[i]
-				mod = objs[o].listOP_CALL_ECX_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean2(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+	clearHashChecker()
+	o=0
+	operation="CALL ECX ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_CALL_ECX.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_CALL_ECX[i]
+			cnt = objs[o].listOP_CALL_ECX_CNT[i]
+			num = objs[o].listOP_CALL_ECX_NumOps[i]
+			mod = objs[o].listOP_CALL_ECX_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			val =objs[o].listOP_CALL_ECX.__len__()
-			total = val + total
-			counterReset()
-			o = o + 1
-		out = "JOP ROCKET"
-		print >> f, out
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_CALL_ECX.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
 	o = 0
-	if total == 0:
-		nope(filename, total)
-	nope2(filename, total, objs[0].listOP_CALL_ECX[0])
-
 
 def printlistOP_CALL_EDX(NumOpsDis):
+	global printStyle
 	global o
 	idval = 1
-	while os.path.exists("%s-CALL EDX ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"CALL EDX ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_CALL_EDX.__len__()
-			for i in range (cnt):
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_CALL_EDX[i]
-				cnt = objs[o].listOP_CALL_EDX_CNT[i]
-				num = objs[o].listOP_CALL_EDX_NumOps[i]
-				mod = objs[o].listOP_CALL_EDX_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean2(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+	clearHashChecker()
+	o=0
+	operation="CALL EDX ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_CALL_EDX.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_CALL_EDX[i]
+			cnt = objs[o].listOP_CALL_EDX_CNT[i]
+			num = objs[o].listOP_CALL_EDX_NumOps[i]
+			mod = objs[o].listOP_CALL_EDX_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			val =objs[o].listOP_CALL_EDX.__len__()
-			total = val + total
-			counterReset()
-			o = o + 1
-		out = "JOP ROCKET"
-		print >> f, out
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()					
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_CALL_EDX.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
 	o = 0
-	if total == 0:
-		nope(filename, total)
-	nope2(filename, total, objs[0].listOP_CALL_EDX[0])
-
+	
+def printlistOP_CALL_ESI(NumOpsDis):
+	global printStyle
+	global o
+	idval = 1
+	clearHashChecker()
+	o=0
+	operation="CALL ESI ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_CALL_ESI.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_CALL_ESI[i]
+			cnt = objs[o].listOP_CALL_ESI_CNT[i]
+			num = objs[o].listOP_CALL_ESI_NumOps[i]
+			mod = objs[o].listOP_CALL_ESI_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()					
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_CALL_ESI.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
+	o = 0
 
 def printlistOP_CALL_EDI(NumOpsDis):
+	global printStyle
 	global o
 	idval = 1
-	while os.path.exists("%s-CALL EDI ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"CALL EDI ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_CALL_EDI.__len__()
-			for i in range (cnt):
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_CALL_EDI[i]
-				cnt = objs[o].listOP_CALL_EDI_CNT[i]
-				num = objs[o].listOP_CALL_EDI_NumOps[i]
-				mod = objs[o].listOP_CALL_EDI_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean2(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+	clearHashChecker()
+	o=0
+	operation="CALL EDI ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_CALL_EDI.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_CALL_EDI[i]
+			cnt = objs[o].listOP_CALL_EDI_CNT[i]
+			num = objs[o].listOP_CALL_EDI_NumOps[i]
+			mod = objs[o].listOP_CALL_EDI_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			val =objs[o].listOP_CALL_EDI.__len__()
-			total = val + total
-			counterReset()
-			o = o + 1
-		out = "JOP ROCKET"
-		print >> f, out
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()					
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_CALL_EDI.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
 	o = 0
-	if total == 0:
-		nope(filename, total)
-	nope2(filename, total, objs[0].listOP_CALL_EDI[0])
-
-def printlistOP_CALL_ESI(NumOpsDis):
-	global o
-	idval = 1
-	while os.path.exists("%s-CALL ESI ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"CALL ESI ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_CALL_ESI.__len__()
-			for i in range (cnt):
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_CALL_ESI[i]
-				cnt = objs[o].listOP_CALL_ESI_CNT[i]
-				num = objs[o].listOP_CALL_ESI_NumOps[i]
-				mod = objs[o].listOP_CALL_ESI_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean2(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			val =objs[o].listOP_CALL_ESI.__len__()
-			total = val + total
-			counterReset()
-			o = o + 1
-		out = "JOP ROCKET"
-		print >> f, out
-	o = 0
-	if total == 0:
-		nope(filename, total)
-	nope2(filename, total, objs[0].listOP_CALL_ESI[0])
-
-def printlistOP_CALL_EBP(NumOpsDis):
-	global o
-	idval = 1
-	while os.path.exists("%s-CALL EBP ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"CALL EBP ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_CALL_EBP.__len__()
-			for i in range (cnt):
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_CALL_EBP[i]
-				cnt = objs[o].listOP_CALL_EBP_CNT[i]
-				num = objs[o].listOP_CALL_EBP_NumOps[i]
-				mod = objs[o].listOP_CALL_EBP_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean2(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			val =objs[o].listOP_CALL_EBP.__len__()
-			total = val + total
-			counterReset()
-			o = o + 1
-		out = "JOP ROCKET"
-		print >> f, out
-	o = 0
-	if total == 0:
-		nope(filename, total)
-	nope2(filename, total, objs[0].listOP_CALL_EBP[0])
 
 def printlistOP_CALL_ESP(NumOpsDis):
+	global printStyle
 	global o
 	idval = 1
-	while os.path.exists("%s-CALL ESP ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"CALL ESP ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_CALL_ESP.__len__()
-			for i in range (cnt):
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_CALL_ESP[i]
-				cnt = objs[o].listOP_CALL_ESP_CNT[i]
-				num = objs[o].listOP_CALL_ESP_NumOps[i]
-				mod = objs[o].listOP_CALL_ESP_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean2(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+	clearHashChecker()
+	o=0
+	operation="CALL ESP ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_CALL_ESP.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_CALL_ESP[i]
+			cnt = objs[o].listOP_CALL_ESP_CNT[i]
+			num = objs[o].listOP_CALL_ESP_NumOps[i]
+			mod = objs[o].listOP_CALL_ESP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			val =objs[o].listOP_CALL_ESP.__len__()
-			total = val + total
-			counterReset()
-			o = o + 1
-		out = "JOP ROCKET"
-		print >> f, out
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()					
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_CALL_ESP.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
 	o = 0
-	if total == 0:
-		nope(filename, total)
-	nope2(filename, total, objs[0].listOP_CALL_ESP[0])
+
+def printlistOP_CALL_EBP(NumOpsDis):
+	global printStyle
+	global o
+	idval = 1
+	clearHashChecker()
+	o=0
+	operation="CALL EBP ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_CALL_EBP.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_CALL_EBP[i]
+			cnt = objs[o].listOP_CALL_EBP_CNT[i]
+			num = objs[o].listOP_CALL_EBP_NumOps[i]
+			mod = objs[o].listOP_CALL_EBP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()					
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_CALL_EBP.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
+	o = 0
+
+
+
+def printlistOP_JMP_PTR_EAX(NumOpsDis):
+	global o
+	global printStyle
+	idval = 1
+	o=0
+	clearHashChecker()
+	operation="JMP PTR EAX ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_JMP_PTR_EAX.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_JMP_PTR_EAX[i]
+			cnt = objs[o].listOP_JMP_PTR_EAX_CNT[i]
+			num = objs[o].listOP_JMP_PTR_EAX_NumOps[i]
+			mod = objs[o].listOP_JMP_PTR_EAX_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_JMP_PTR_EAX.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
+	o = 0
+
+def printlistOP_JMP_PTR_EBX(NumOpsDis):
+	global printStyle
+	global o
+	idval = 1
+	clearHashChecker()
+	o=0
+	operation="JMP PTR EBX ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_JMP_PTR_EBX.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_JMP_PTR_EBX[i]
+			cnt = objs[o].listOP_JMP_PTR_EBX_CNT[i]
+			num = objs[o].listOP_JMP_PTR_EBX_NumOps[i]
+			mod = objs[o].listOP_JMP_PTR_EBX_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_JMP_PTR_EBX.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
+	o = 0
+	
+def printlistOP_JMP_PTR_ECX(NumOpsDis):
+	global printStyle
+	global o
+	idval = 1
+	clearHashChecker()
+	o=0
+	operation="JMP PTR ECX ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_JMP_PTR_ECX.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_JMP_PTR_ECX[i]
+			cnt = objs[o].listOP_JMP_PTR_ECX_CNT[i]
+			num = objs[o].listOP_JMP_PTR_ECX_NumOps[i]
+			mod = objs[o].listOP_JMP_PTR_ECX_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_JMP_PTR_ECX.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
+	o = 0
+
+def printlistOP_JMP_PTR_EDX(NumOpsDis):
+	global printStyle
+	global o
+	idval = 1
+	clearHashChecker()
+	o=0
+	operation="JMP PTR EDX ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_JMP_PTR_EDX.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_JMP_PTR_EDX[i]
+			cnt = objs[o].listOP_JMP_PTR_EDX_CNT[i]
+			num = objs[o].listOP_JMP_PTR_EDX_NumOps[i]
+			mod = objs[o].listOP_JMP_PTR_EDX_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()					
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_JMP_PTR_EDX.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
+	o = 0
+	
+def printlistOP_JMP_PTR_ESI(NumOpsDis):
+	global printStyle
+	global o
+	idval = 1
+	clearHashChecker()
+	o=0
+	operation="JMP PTR ESI ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_JMP_PTR_ESI.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_JMP_PTR_ESI[i]
+			cnt = objs[o].listOP_JMP_PTR_ESI_CNT[i]
+			num = objs[o].listOP_JMP_PTR_ESI_NumOps[i]
+			mod = objs[o].listOP_JMP_PTR_ESI_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()					
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_JMP_PTR_ESI.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
+	o = 0
+
+def printlistOP_JMP_PTR_EDI(NumOpsDis):
+	global printStyle
+	global o
+	idval = 1
+	clearHashChecker()
+	o=0
+	operation="JMP PTR EDI ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_JMP_PTR_EDI.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_JMP_PTR_EDI[i]
+			cnt = objs[o].listOP_JMP_PTR_EDI_CNT[i]
+			num = objs[o].listOP_JMP_PTR_EDI_NumOps[i]
+			mod = objs[o].listOP_JMP_PTR_EDI_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()					
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_JMP_PTR_EDI.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
+	o = 0
+
+def printlistOP_JMP_PTR_ESP(NumOpsDis):
+	global printStyle
+	global o
+	idval = 1
+	clearHashChecker()
+	o=0
+	operation="JMP PTR ESP ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_JMP_PTR_ESP.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_JMP_PTR_ESP[i]
+			cnt = objs[o].listOP_JMP_PTR_ESP_CNT[i]
+			num = objs[o].listOP_JMP_PTR_ESP_NumOps[i]
+			mod = objs[o].listOP_JMP_PTR_ESP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()					
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_JMP_PTR_ESP.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
+	o = 0
+
+def printlistOP_JMP_PTR_EBP(NumOpsDis):
+	global printStyle
+	global o
+	idval = 1
+	clearHashChecker()
+	o=0
+	operation="JMP PTR EBP ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_JMP_PTR_EBP.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_JMP_PTR_EBP[i]
+			cnt = objs[o].listOP_JMP_PTR_EBP_CNT[i]
+			num = objs[o].listOP_JMP_PTR_EBP_NumOps[i]
+			mod = objs[o].listOP_JMP_PTR_EBP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()					
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_JMP_PTR_EBP.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
+	o = 0
 
 
 
 def printlistOP_CALL_PTR_EAX(NumOpsDis):
+	# print ("enter new printlist")
 	global o
+	global printStyle
 	idval = 1
+	o=0
 	clearHashChecker()
-	while os.path.exists("%s-CALL PTR EAX ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"CALL PTR EAX ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_CALL_PTR_EAX.__len__()
-			for i in range (cnt):
-
-				print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-				counter()
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_CALL_PTR_EAX[i]
-				cnt = objs[o].listOP_CALL_PTR_EAX_CNT[i]
-				num = objs[o].listOP_CALL_PTR_EAX_NumOps[i]
-				mod = objs[o].listOP_CALL_PTR_EAX_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-
-				print >> f, Ct () + "\t" + out
-				#print disHereClean(addy, cnt, num, "jmp")
-				print >> f, disHereClean2(addy, cnt, num, "jmp")
-			val =objs[o].listOP_CALL_PTR_EAX.__len__()
-			total = val + total
-			#out = "# CALL PTR [EAX] total" " + str(val)"
-			#print out
-			#print >> f, out
-			counterReset()
-			o = o + 1
-		out = ""#"# Grand total CALL PTR [EAX] total" " + str(total)
-		#print out
-		print >> f, out
+	operation="My CALL PTR EAX ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_CALL_PTR_EAX.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_CALL_PTR_EAX[i]
+			cnt = objs[o].listOP_CALL_PTR_EAX_CNT[i]
+			num = objs[o].listOP_CALL_PTR_EAX_NumOps[i]
+			mod = objs[o].listOP_CALL_PTR_EAX_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_CALL_PTR_EAX.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
 	o = 0
-	nope(filename, total)
 
 def printlistOP_CALL_PTR_EBX(NumOpsDis):
+	global printStyle
 	global o
 	idval = 1
 	clearHashChecker()
-	while os.path.exists("%s-CALL PTR EBX ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"CALL PTR EBX ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_CALL_PTR_EBX.__len__()
-			for i in range (cnt):
-
-				print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-				counter()
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_CALL_PTR_EBX[i]
-				cnt = objs[o].listOP_CALL_PTR_EBX_CNT[i]
-				num = objs[o].listOP_CALL_PTR_EBX_NumOps[i]
-				mod = objs[o].listOP_CALL_PTR_EBX_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-
-				print >> f, Ct () + "\t" + out
-				#print disHereClean(addy, cnt, num, "jmp")
-				print >> f, disHereClean2(addy, cnt, num, "jmp")
-			val =objs[o].listOP_CALL_PTR_EBX.__len__()
-			total = val + total
-			out = "# CALL PTR [EBX] total" " + str(val)"
-			#print out
-			print >> f, out
-			counterReset()
-			o = o + 1
-		out = ""#"# Grand total CALL PTR [EBX] total" " + str(total)
-		#print out
-		print >> f, out
+	o=0
+	operation="CALL PTR EBX ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_CALL_PTR_EBX.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_CALL_PTR_EBX[i]
+			cnt = objs[o].listOP_CALL_PTR_EBX_CNT[i]
+			num = objs[o].listOP_CALL_PTR_EBX_NumOps[i]
+			mod = objs[o].listOP_CALL_PTR_EBX_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_CALL_PTR_EBX.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
 	o = 0
-	nope(filename, total)
-
+	
 def printlistOP_CALL_PTR_ECX(NumOpsDis):
+	global printStyle
 	global o
 	idval = 1
 	clearHashChecker()
-	while os.path.exists("%s-CALL PTR ECX ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"CALL PTR ECX ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_CALL_PTR_ECX.__len__()
-			for i in range (cnt):
-
-				print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-				counter()
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_CALL_PTR_ECX[i]
-				cnt = objs[o].listOP_CALL_PTR_ECX_CNT[i]
-				num = objs[o].listOP_CALL_PTR_ECX_NumOps[i]
-				mod = objs[o].listOP_CALL_PTR_ECX_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-
-				print >> f, Ct () + "\t" + out
-				#print disHereClean(addy, cnt, num, "jmp")
-				print >> f, disHereClean2(addy, cnt, num, "jmp")
-			val =objs[o].listOP_CALL_PTR_ECX.__len__()
-			total = val + total
-			out = "# CALL PTR [ECX] total" " + str(val)"
-			#print out
-			print >> f, out
-			counterReset()
-			o = o + 1
-		out = ""#"# Grand total CALL PTR [ECX] total" " + str(total)
-		#print out
-		print >> f, out
+	o=0
+	operation="CALL PTR ECX ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_CALL_PTR_ECX.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_CALL_PTR_ECX[i]
+			cnt = objs[o].listOP_CALL_PTR_ECX_CNT[i]
+			num = objs[o].listOP_CALL_PTR_ECX_NumOps[i]
+			mod = objs[o].listOP_CALL_PTR_ECX_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_CALL_PTR_ECX.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
 	o = 0
-	nope(filename, total)
 
 def printlistOP_CALL_PTR_EDX(NumOpsDis):
+	global printStyle
 	global o
 	idval = 1
 	clearHashChecker()
-	while os.path.exists("%s-CALL PTR EDX ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"CALL PTR EDX ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_CALL_PTR_EDX.__len__()
-			for i in range (cnt):
-
-				print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-				counter()
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_CALL_PTR_EDX[i]
-				cnt = objs[o].listOP_CALL_PTR_EDX_CNT[i]
-				num = objs[o].listOP_CALL_PTR_EDX_NumOps[i]
-				mod = objs[o].listOP_CALL_PTR_EDX_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-
-				print >> f, Ct () + "\t" + out
-				print >> f, disHereClean2(addy, cnt, num, "jmp")
-			val =objs[o].listOP_CALL_PTR_EDX.__len__()
-			total = val + total
-			out = ""# CALL PTR [EDX] total" " + str(val)"
-			#print out
-			print >> f, out
-			counterReset()
-			o = o + 1
-
+	o=0
+	operation="CALL PTR EDX ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_CALL_PTR_EDX.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_CALL_PTR_EDX[i]
+			cnt = objs[o].listOP_CALL_PTR_EDX_CNT[i]
+			num = objs[o].listOP_CALL_PTR_EDX_NumOps[i]
+			mod = objs[o].listOP_CALL_PTR_EDX_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()					
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_CALL_PTR_EDX.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
 	o = 0
-	nope(filename, total)
-
+	
 def printlistOP_CALL_PTR_ESI(NumOpsDis):
+	global printStyle
 	global o
 	idval = 1
 	clearHashChecker()
-	while os.path.exists("%s-CALL PTR ESI ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"CALL PTR ESI ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_CALL_PTR_ESI.__len__()
-			for i in range (cnt):
-
-				print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-				counter()
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_CALL_PTR_ESI[i]
-				cnt = objs[o].listOP_CALL_PTR_ESI_CNT[i]
-				num = objs[o].listOP_CALL_PTR_ESI_NumOps[i]
-				mod = objs[o].listOP_CALL_PTR_ESI_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-
-				print >> f, Ct () + "\t" + out
-				print >> f, disHereClean2(addy, cnt, num, "jmp")
-			val =objs[o].listOP_CALL_PTR_ESI.__len__()
-			total = val + total
-			out = ""# CALL PTR [ESI] total" " + str(val)"
-			#print out
-			print >> f, out
-			counterReset()
-			o = o + 1
-		out = ""#"# Grand total CALL PTR [ESI] total" " + str(total)
-		#print out
-		print >> f, out
+	o=0
+	operation="CALL PTR ESI ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_CALL_PTR_ESI.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_CALL_PTR_ESI[i]
+			cnt = objs[o].listOP_CALL_PTR_ESI_CNT[i]
+			num = objs[o].listOP_CALL_PTR_ESI_NumOps[i]
+			mod = objs[o].listOP_CALL_PTR_ESI_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()					
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_CALL_PTR_ESI.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
 	o = 0
-	nope(filename, total)
 
 def printlistOP_CALL_PTR_EDI(NumOpsDis):
+	global printStyle
 	global o
 	idval = 1
 	clearHashChecker()
-	while os.path.exists("%s-CALL PTR EDI ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"CALL PTR EDI ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_CALL_PTR_EDI.__len__()
-			for i in range (cnt):
-
-				print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-				counter()
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_CALL_PTR_EDI[i]
-				cnt = objs[o].listOP_CALL_PTR_EDI_CNT[i]
-				num = objs[o].listOP_CALL_PTR_EDI_NumOps[i]
-				mod = objs[o].listOP_CALL_PTR_EDI_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-
-				print >> f, Ct () + "\t" + out
-				print >> f, disHereClean2(addy, cnt, num, "jmp")
-			val =objs[o].listOP_CALL_PTR_EDI.__len__()
-			total = val + total
-			out = ""# CALL PTR [EDI] total" " + str(val)"
-			#print out
-			print >> f, out
-			counterReset()
-			o = o + 1
-		out = ""#"# Grand total CALL PTR [EDI] total" " + str(total)
-		#print out
-		print >> f, out
+	o=0
+	operation="CALL PTR EDI ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_CALL_PTR_EDI.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_CALL_PTR_EDI[i]
+			cnt = objs[o].listOP_CALL_PTR_EDI_CNT[i]
+			num = objs[o].listOP_CALL_PTR_EDI_NumOps[i]
+			mod = objs[o].listOP_CALL_PTR_EDI_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()					
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_CALL_PTR_EDI.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
 	o = 0
-	nope(filename, total)
-
-def printlistOP_CALL_PTR_EBP(NumOpsDis):
-	global o
-	idval = 1
-	clearHashChecker()
-	while os.path.exists("%s-CALL PTR EBP ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"CALL PTR EBP ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_CALL_PTR_EBP.__len__()
-			for i in range (cnt):
-
-				print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-				counter()
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_CALL_PTR_EBP[i]
-				cnt = objs[o].listOP_CALL_PTR_EBP_CNT[i]
-				num = objs[o].listOP_CALL_PTR_EBP_NumOps[i]
-				mod = objs[o].listOP_CALL_PTR_EBP_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-
-				print >> f, Ct () + "\t" + out
-				print >> f, disHereClean2(addy, cnt, num, "jmp")
-			val =objs[o].listOP_CALL_PTR_EBP.__len__()
-			total = val + total
-			out = ""# CALL PTR [EBP] total" " + str(val)"
-			#print out
-			print >> f, out
-			counterReset()
-			o = o + 1
-		out = ""#"# Grand total CALL PTR [EBP] total" " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	nope(filename, total)
-
 
 def printlistOP_CALL_PTR_ESP(NumOpsDis):
+	global printStyle
 	global o
 	idval = 1
 	clearHashChecker()
-	while os.path.exists("%s-CALL PTR ESP ALL_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-"+"CALL PTR ESP ALL_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		total = 0
-		for obj in objs:
-			i=0
-			cnt = objs[o].listOP_CALL_PTR_ESP.__len__()
-			for i in range (cnt):
-
-				print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-				counter()
-				addy =0
-				cnt = 0   #
-				num = 0
-				addy = objs[o].listOP_CALL_PTR_ESP[i]
-				cnt = objs[o].listOP_CALL_PTR_ESP_CNT[i]
-				num = objs[o].listOP_CALL_PTR_ESP_NumOps[i]
-				mod = objs[o].listOP_CALL_PTR_ESP_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-
-				print >> f, Ct () + "\t" + out
-				print >> f, disHereClean2(addy, cnt, num, "jmp")
-			val =objs[o].listOP_CALL_PTR_ESP.__len__()
-			total = val + total
-			out = "# CALL PTR [ESP] total" " + str(val)"
-			#print out
-			print >> f, out
-			counterReset()
-			o = o + 1
-		out = ""#"# Grand total CALL PTR [ESP] total" " + str(total)
-		#print out
-		print >> f, out
+	o=0
+	operation="CALL PTR ESP ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_CALL_PTR_ESP.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_CALL_PTR_ESP[i]
+			cnt = objs[o].listOP_CALL_PTR_ESP_CNT[i]
+			num = objs[o].listOP_CALL_PTR_ESP_NumOps[i]
+			mod = objs[o].listOP_CALL_PTR_ESP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()					
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_CALL_PTR_ESP.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
 	o = 0
-	nope(filename, total)
+
+def printlistOP_CALL_PTR_EBP(NumOpsDis):
+	global printStyle
+	global o
+	idval = 1
+	clearHashChecker()
+	o=0
+	operation="CALL PTR EBP ALL"
+	global directory
+	lock = False
+	Reg=""
+	counterReset()
+	total = 0
+	for obj in objs:
+		i=0
+		cnt = objs[o].listOP_CALL_PTR_EBP.__len__()
+		for i in range (cnt):
+			addy = objs[o].listOP_CALL_PTR_EBP[i]
+			cnt = objs[o].listOP_CALL_PTR_EBP_CNT[i]
+			num = objs[o].listOP_CALL_PTR_EBP_NumOps[i]
+			mod = objs[o].listOP_CALL_PTR_EBP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean2(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()					
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		val =objs[o].listOP_CALL_PTR_EBP.__len__()
+		total = val + total
+		counterReset()
+		o = o + 1
+	o = 0
+
 
 def cleaner(addy, Cnt, numOps):
 	clearHashChecker()
@@ -17439,10 +20741,11 @@ def printlistOP_SP(NumOpsDis, Reg):
 	global o
 	clearHashChecker()
 	idval = 1
+	global directory
 
-	while os.path.exists("%s-S_PIVOT%s-%s.txt" % (peName, Reg, idval)):
+	while os.path.exists("%s%s-S_PIVOT%s-%s.txt" % (directory, peName, Reg, idval)):
 	    idval += 1
-	filename = peName +"-S_PIVOT" + Reg + "-" + str(idval) + ".txt"
+	filename = directory + peName +"-S_PIVOT" + Reg + "-" + str(idval) + ".txt"
 	fname= filename
 
 	with open(filename, 'a') as f:
@@ -17542,7 +20845,6 @@ def printlistOP_SP(NumOpsDis, Reg):
 					spbytes =0
 					SPSuccess=False
 					SPSuccess, spgadget, spbytes= disHereCleanSP(addy, cnt, num, spe, Reg, mod) 
-					spgadget= spgadget+ "\t" + str(mod)  
 
 					if SPSuccess:
 						out1.append(spgadget)
@@ -17580,14 +20882,15 @@ def printlistOP_SP(NumOpsDis, Reg):
 	o = 0
 	nope(filename, total)
 
-def printlistOP_SP3(NumOpsDis, Reg):
+def printlistOP_SP3(NumOpsDis, Reg):   ####### THIS IS THE GOOD ONE
 	global skipZero
 	global o
+	global directory
 	clearHashChecker()
 	idval = 1
-	while os.path.exists("%s-S_PIVOTS3-%s.txt" % (peName, idval)):
+	while os.path.exists("%s%s-S_PIVOTS3-%s.txt" % (directory, peName, idval)):
 	    idval += 1
-	filename = peName +"-S_PIVOTS3-" + str(idval) + ".txt"
+	filename = directory + peName +"-S_PIVOTS3-" + str(idval) + ".txt"
 	fname= filename
 
 	with open(filename, 'a') as f:
@@ -17597,6 +20900,7 @@ def printlistOP_SP3(NumOpsDis, Reg):
 		temp = []
 		out1 = []
 		out2 =[]
+		print >> f, outputMitigations()
 		for obj in objs:
 			preRegs = ["EAX", "EBX", "ECX","EDX","EDI","ESI","EBP","ESP"]
 			for Reg in preRegs:
@@ -17696,7 +21000,6 @@ def printlistOP_SP3(NumOpsDis, Reg):
 	o = 0
 	nope(filename, total)
 
-
 def getStackPivotAsLists(NumOpsDis, Reg):
 	global skipZero
 	global o
@@ -17760,7 +21063,7 @@ def getStackPivotAsLists(NumOpsDis, Reg):
 			if Reg == "ESP":
 				spgadget = objs[o].SpOutGadgetESP[i]
 				spbytes = objs[o].SpOutNumBytesESP[i]
-			#out = "Ops: " + str(num) + "\tMod: " + str(mod)  + "\t"  + str(spe) + " bytes "
+			#out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t"   + "\t"  + str(spe) + " bytes "
 			#spbytes =0
 			SPSuccess=True
 			spgadget= spgadget #+ "\t" + str(mod)  
@@ -17993,6 +21296,46 @@ def preprocessOP_DG(NumOpsDis, Reg):
 		return True,output1, specials[0]
 	except:
 		return False,"",0
+
+
+def preprocessOP_DGPre( Reg):
+	Reg = Reg.upper()
+	global o
+	myRegs =["EAX","EBX","ECX","EDX","ESI","EDI","EBP"]
+	myRegs.remove(Reg)
+	i=0
+
+
+	for obj in objs:
+		# print "Regg " + Reg
+		for Reg1 in myRegs:
+			if Reg1 == "EAX":
+				if objs[o].listOP_BaseDG_EAX:
+					return True,"EAX"
+			elif Reg1 == "EBX":
+				if objs[o].listOP_BaseDG_EBX:
+					return True,"EBX"
+			elif Reg1 == "ECX":
+				if objs[o].listOP_BaseDG_ECX:
+					return True,"ECX"
+			elif Reg1 == "EDX":
+				if objs[o].listOP_BaseDG_EDX:
+					return True,"EDX"
+			elif Reg1 == "ESI":
+				# print "checking esi"
+				if objs[o].listOP_BaseDG_ESI:
+					return True,"ESI"
+			elif Reg1 == "EDI":
+				# print "checking edi"
+				if objs[o].listOP_BaseDG_EDI:
+					return True,"EDI"
+			elif Reg1 == "ESP":
+				if objs[o].listOP_BaseDG_ESP:
+					return True,"ESP"
+			elif Reg1 == "EBP":
+				if objs[o].listOP_BaseDG_EBP:
+					return True,"EBP"
+	return False, "NA"
 
 def oldpreprocessOP_Popold(NumOpsDis, popReg, jmpReg,best, mode):
 	global o
@@ -18286,17 +21629,50 @@ def calcRegforDispatcher(Reg):
 		t2, g2, b2=returnPopESP()
 	return g2, b2
 
-def calcRegforDispatchTable(Reg):
-	IA86 =["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EDI", "EBP", "ESP"]
-	IA86 =["EAX",  "EDX", "EDI", "ESI", "EDI", "EBP", "ESP"]
-
+def calcRegforDispatchTable(Reg, r2):
+	IA86 =["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EDI", "EBP"]#, "ESP"]
+	# print ("r2", r2)
+	if r2 == "EAX":
+		# print ("goodDG EAX2", )
+		t2, g2, b2=returnPopEAX()
+		if t2:
+			return g2,b2, "EAX"
+	if r2 == "EBX":
+		t2, g2, b2=returnPopEBX()
+		if t2:
+			return g2,b2, "EBX"
+	if r2 == "ECX":
+		t2, g2, b2=returnPopECX()
+		if t2:
+			return g2,b2, "ECX"
+	if r2 == "EDX":
+		tr22, g2, b2=returnPopEDX()
+		if t2:
+			return g2,b2, "EDX"
+	if r2 == "EDI":
+		t2, g2, b2=returnPopEDI()
+		if t2:
+			return g2,b2, "EDI"
+	if r2 == "ESI":
+		t2, g2, b2=returnPopESI()
+		if t2:
+			return g2,b2, "ESI"
+	if r2 == "EBP":
+		t2, g2, b2=returnPopEBP()
+		if t2:
+			return g2,b2, "EBP"
+	if r2 == "ESP":
+		t2, g2, b2=returnPopESP()
+		if t2:
+			return g2,b2, "ESP"
 	currentRegs=[]
-
 	z=0
 	for x in IA86:
 		if IA86[z] != Reg:
 			currentRegs.append(IA86[z])
 		z+=1
+
+
 	x=0			# FIND  *FIRST* ONE THAT IS NOT DESIRED REG!
 	while (x<8):
 		try:
@@ -18337,7 +21713,173 @@ def calcRegforDispatchTable(Reg):
 				break
 		x+=1
 	return g2, b2, Reg
-def returnPopEAX():
+
+def returnPopEAX():  #newest
+	# print ("my best", len(objs[o].specialPOPGadgetRetBestEAX))
+	# print ("my not best", len(objs[o].specialPOPGadgetRetEAX))
+	length = len(objs[o].specialPOPGadgetRetBestEAX) -1
+	# for yy in objs[o].specialPOPGadgetRetEAX:
+	# 	print countLines(yy)
+	if objs[o].specialPOPBytesRetEAX:
+		for x in objs[o].specialPOPGadgetRetBestEAX:
+			gadget=x
+		for x in objs[o].specialPOPBytesRetBestEAX:
+			bytesPop=x
+			if (countLines(gadget) <3):
+				# print ("ch1")
+				return True, gadget, bytesPop
+		i=0				
+		for x in objs[o].specialPOPGadgetRetBestEAX:
+			if (countLines(objs[o].specialPOPGadgetRetBestEAX[i]) < 3):
+				gadget2 = objs[o].specialPOPGadgetRetBestEAX[i]
+				bytesPop2 = objs[o].specialPOPBytesRetBestEAX[i]
+				# print ("ch2")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPGadgetRetBestEAX:
+			if (countLines(objs[o].specialPOPGadgetRetBestEAX[i]) < 4):
+				gadget2 = objs[o].specialPOPGadgetRetBestEAX[i]
+				bytesPop2 = objs[o].specialPOPBytesRetBestEAX[i]
+				# print ("ch3")
+				return True, gadget2, bytesPop2
+			i+=1
+		if i == length:
+			# print ("ch4")
+			return True, gadget, bytesPop			
+			
+	if objs[o].specialPOPGadgetRetEAX:
+		i=0
+		for x in objs[o].specialPOPBytesRetEAX:
+			if (countLines(objs[o].specialPOPGadgetRetEAX[i]) < 3):
+				gadget2 = objs[o].specialPOPBytesRetEAX[i]
+				bytesPop2 = objs[o].specialPOPGadgetRetEAX[i]
+				# print ("ch2")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetEAX:
+			# print ("hi1")
+			if (countLines(objs[o].specialPOPGadgetRetEAX[i]) < 4):
+				gadget2 = objs[o].specialPOPGadgetRetEAX[i]
+				bytesPop2 = objs[o].specialPOPBytesRetEAX[i]
+				# print ("ch3b")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetEAX:
+			# print ("hi2")
+			if (countLines(objs[o].specialPOPGadgetRetEAX[i]) < 5):
+				gadget2 = objs[o].specialPOPGadgetRetEAX[i]
+				bytesPop2 = objs[o].specialPOPBytesRetEAX[i]
+				# print ("ch4b")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetEAX:
+			# print ("hi3")
+			if (countLines(objs[o].specialPOPGadgetRetEAX[i]) < 6):
+				gadget2 = objs[o].specialPOPGadgetRetEAX[i]
+				bytesPop2 = objs[o].specialPOPBytesRetEAX[i]
+				# print ("ch5b")
+				return True, gadget2, bytesPop2
+			i+=1			
+		for x in objs[o].specialPOPGadgetRetEAX:
+			gadget=x
+		for xx in objs[o].specialPOPBytesRetEAX:
+			bytesPop=xx
+		# print ("ch7")
+		return True, gadget, bytesPop
+	return False,"0x0000badd, # (base + 0xbadd) # POP Gadget not Found",0 
+	# return True, "0x0000badd, # (base + 0xbadd) # POP Gadget not Found",0
+def returnPopEAX2():
+	print ("my best", len(objs[o].specialPOPGadgetRetBestEAX))
+	print ("my not best", len(objs[o].specialPOPGadgetRetEAX))
+	length = len(objs[o].specialPOPGadgetRetBestEAX) -1
+
+	print "outs"
+	for myE in objs[o].specialPOPGadgetRetEAX:
+		print countLines(myE)
+			
+	try:
+		for x in objs[o].specialPOPGadgetRetBestEAX:
+			gadget=x
+		for x in objs[o].specialPOPBytesRetBestEAX:
+			bytesPop=x
+			if (countLines(gadget) <3):
+				print ("ch1")
+				return True, gadget, bytesPop
+		i=0				
+		for x in objs[o].specialPOPGadgetRetBestEAX:
+			if (countLines(objs[o].specialPOPGadgetRetBestEAX[i]) < 3):
+				gadget2 = objs[o].specialPOPGadgetRetBestEAX[i]
+				bytesPop2 = objs[o].specialPOPBytesRetBestEAX[i]
+				print ("ch2")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPGadgetRetBestEAX:
+			if (countLines(objs[o].specialPOPGadgetRetBestEAX[i]) < 4):
+				gadget2 = objs[o].specialPOPGadgetRetBestEAX[i]
+				bytesPop2 = objs[o].specialPOPBytesRetBestEAX[i]
+				print ("ch3")
+				return True, gadget2, bytesPop2
+			if i == length:
+				print ("ch4")
+				return True, gadget, bytesPop			
+			i+=1
+		return True, gadget, bytesPop
+	except:
+		try:
+			i=0
+			for x in objs[o].specialPOPBytesRetEAX:
+				
+				if (countLines(objs[o].specialPOPBytesRetEAX[i]) < 3):
+					gadget2 = objs[o].specialPOPBytesRetEAX[i]
+					bytesPop2 = objs[o].specialPOPGadgetRetEAX[i]
+					print ("ch2")
+					return True, gadget2, bytesPop2
+				i+=1
+
+			i=0				
+			for x in objs[o].specialPOPBytesRetEAX:
+				print ("hi1")
+				if (countLines(objs[o].specialPOPBytesRetEAX[i]) < 4):
+					gadget2 = objs[o].specialPOPBytesRetEAX[i]
+					bytesPop2 = objs[o].specialPOPGadgetRetEAX[i]
+					print ("ch3")
+					return True, gadget2, bytesPop2
+				if i == length:
+					print ("ch4")
+					return True, gadget, bytesPop		
+				i+=1
+			i=0				
+			for x in objs[o].specialPOPBytesRetEAX:
+				print ("hi2")
+
+				if (countLines(objs[o].specialPOPBytesRetEAX[i]) < 5):
+					gadget2 = objs[o].specialPOPBytesRetEAX[i]
+					bytesPop2 = objs[o].specialPOPGadgetRetEAX[i]
+					print ("ch5")
+					return True, gadget2, bytesPop2
+				if i == length:
+					print ("ch6")
+					return True, gadget, bytesPop					
+				i+=1
+			for x in objs[o].specialPOPGadgetRetEAX:
+				gadget=x
+			for x in objs[o].specialPOPBytesRetEAX:
+				bytesPop=x
+				print ("ch7")
+			return True, gadget, bytesPop
+		except:
+			# print "# No gadget found."
+
+			return False, "",0
+
+def returnPopEAXanotherold():
+	print ("my best", len(objs[o].specialPOPGadgetRetBestEAX))
+	print ("my not best", len(objs[o].specialPOPGadgetRetEAX))
 	length = len(objs[o].specialPOPGadgetRetBestEAX) -1
 	try:
 		for x in objs[o].specialPOPGadgetRetBestEAX:
@@ -18345,6 +21887,7 @@ def returnPopEAX():
 		for x in objs[o].specialPOPBytesRetBestEAX:
 			bytesPop=x
 			if (countLines(gadget) <3):
+				print ("ch1")
 				return True, gadget, bytesPop
 		i=0				
 		for x in objs[o].specialPOPGadgetRetBestEAX:
@@ -18352,6 +21895,7 @@ def returnPopEAX():
 			if (countLines(objs[o].specialPOPGadgetRetBestEAX[i]) < 3):
 				gadget2 = objs[o].specialPOPGadgetRetBestEAX[i]
 				bytesPop2 = objs[o].specialPOPBytesRetBestEAX[i]
+				print ("ch2")
 				return True, gadget2, bytesPop2
 		i=0				
 		for x in objs[o].specialPOPGadgetRetBestEAX:
@@ -18359,8 +21903,10 @@ def returnPopEAX():
 			if (countLines(objs[o].specialPOPGadgetRetBestEAX[i]) < 4):
 				gadget2 = objs[o].specialPOPGadgetRetBestEAX[i]
 				bytesPop2 = objs[o].specialPOPBytesRetBestEAX[i]
+				print ("ch3")
 				return True, gadget2, bytesPop2
 			if i == length:
+				print ("ch4")
 				return True, gadget, bytesPop			
 		return True, gadget, bytesPop
 	except:
@@ -18369,272 +21915,558 @@ def returnPopEAX():
 				gadget=x
 			for x in objs[o].specialPOPBytesRetEAX:
 				bytesPop=x
+				print ("ch5")
 			return True, gadget, bytesPop
 		except:
 			# print "# No gadget found."
+			
 			return False, "",0
 
 
-def returnPopEBX():
+
+
+def returnPopEBX():  #newest
+	# print ("my best", len(objs[o].specialPOPGadgetRetBestEBX))
+	# print ("my not best", len(objs[o].specialPOPGadgetRetEBX))
 	length = len(objs[o].specialPOPGadgetRetBestEBX) -1
-	try:
+	# for yy in objs[o].specialPOPGadgetRetEBX:
+	# 	print countLines(yy)
+	if objs[o].specialPOPBytesRetEBX:
 		for x in objs[o].specialPOPGadgetRetBestEBX:
 			gadget=x
 		for x in objs[o].specialPOPBytesRetBestEBX:
 			bytesPop=x
 			if (countLines(gadget) <3):
+				# print ("ch1")
 				return True, gadget, bytesPop
 		i=0				
 		for x in objs[o].specialPOPGadgetRetBestEBX:
-			i+=1
 			if (countLines(objs[o].specialPOPGadgetRetBestEBX[i]) < 3):
 				gadget2 = objs[o].specialPOPGadgetRetBestEBX[i]
 				bytesPop2 = objs[o].specialPOPBytesRetBestEBX[i]
+				# print ("ch2")
 				return True, gadget2, bytesPop2
+			i+=1
 		i=0				
 		for x in objs[o].specialPOPGadgetRetBestEBX:
-			i+=1
 			if (countLines(objs[o].specialPOPGadgetRetBestEBX[i]) < 4):
 				gadget2 = objs[o].specialPOPGadgetRetBestEBX[i]
 				bytesPop2 = objs[o].specialPOPBytesRetBestEBX[i]
+				# print ("ch3")
 				return True, gadget2, bytesPop2
-			if i == length:
-				return True, gadget, bytesPop			
+			i+=1
+		if i == length:
+			# print ("ch4")
+			return True, gadget, bytesPop			
+			
+	if objs[o].specialPOPGadgetRetEBX:
+		i=0
+		for x in objs[o].specialPOPBytesRetEBX:
+			if (countLines(objs[o].specialPOPGadgetRetEBX[i]) < 3):
+				gadget2 = objs[o].specialPOPBytesRetEBX[i]
+				bytesPop2 = objs[o].specialPOPGadgetRetEBX[i]
+				# print ("ch2")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetEBX:
+			# print ("hi1")
+			if (countLines(objs[o].specialPOPGadgetRetEBX[i]) < 4):
+				gadget2 = objs[o].specialPOPGadgetRetEBX[i]
+				bytesPop2 = objs[o].specialPOPBytesRetEBX[i]
+				# print ("ch3b")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetEBX:
+			# print ("hi2")
+			if (countLines(objs[o].specialPOPGadgetRetEBX[i]) < 5):
+				gadget2 = objs[o].specialPOPGadgetRetEBX[i]
+				bytesPop2 = objs[o].specialPOPBytesRetEBX[i]
+				# print ("ch4b")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetEBX:
+			# print ("hi3")
+			if (countLines(objs[o].specialPOPGadgetRetEBX[i]) < 6):
+				gadget2 = objs[o].specialPOPGadgetRetEBX[i]
+				bytesPop2 = objs[o].specialPOPBytesRetEBX[i]
+				# print ("ch5b")
+				return True, gadget2, bytesPop2
+			i+=1			
+		for x in objs[o].specialPOPGadgetRetEBX:
+			gadget=x
+		for xx in objs[o].specialPOPBytesRetEBX:
+			bytesPop=xx
+		# print ("ch7")
 		return True, gadget, bytesPop
-	except:
-		try:
-			for x in objs[o].specialPOPGadgetRetEBX:
-				gadget=x
-			for x in objs[o].specialPOPBytesRetEBX:
-				bytesPop=x
-			return True, gadget, bytesPop
-		except:
-			# print "# No gadget found"
-			return False, "",0
+	return False,"0x0000badd, # (base + 0xbadd) # POP Gadget not Found",0 
 
-def returnPopECX():
+def returnPopECX():  #newest
+	# print ("my best", len(objs[o].specialPOPGadgetRetBestECX))
+	# print ("my not best", len(objs[o].specialPOPGadgetRetECX))
 	length = len(objs[o].specialPOPGadgetRetBestECX) -1
-	try:
+	# for yy in objs[o].specialPOPGadgetRetECX:
+	# 	print countLines(yy)
+	if objs[o].specialPOPBytesRetECX:
 		for x in objs[o].specialPOPGadgetRetBestECX:
 			gadget=x
 		for x in objs[o].specialPOPBytesRetBestECX:
 			bytesPop=x
 			if (countLines(gadget) <3):
+				# print ("ch1")
 				return True, gadget, bytesPop
 		i=0				
 		for x in objs[o].specialPOPGadgetRetBestECX:
-			i+=1
 			if (countLines(objs[o].specialPOPGadgetRetBestECX[i]) < 3):
 				gadget2 = objs[o].specialPOPGadgetRetBestECX[i]
 				bytesPop2 = objs[o].specialPOPBytesRetBestECX[i]
+				# print ("ch2")
 				return True, gadget2, bytesPop2
+			i+=1
 		i=0				
 		for x in objs[o].specialPOPGadgetRetBestECX:
-			i+=1
 			if (countLines(objs[o].specialPOPGadgetRetBestECX[i]) < 4):
 				gadget2 = objs[o].specialPOPGadgetRetBestECX[i]
 				bytesPop2 = objs[o].specialPOPBytesRetBestECX[i]
+				# print ("ch3")
 				return True, gadget2, bytesPop2
-			if i == length:
-				return True, gadget, bytesPop			
+			i+=1
+		if i == length:
+			# print ("ch4")
+			return True, gadget, bytesPop			
+			
+	if objs[o].specialPOPGadgetRetECX:
+		i=0
+		for x in objs[o].specialPOPBytesRetECX:
+			if (countLines(objs[o].specialPOPGadgetRetECX[i]) < 3):
+				gadget2 = objs[o].specialPOPBytesRetECX[i]
+				bytesPop2 = objs[o].specialPOPGadgetRetECX[i]
+				# print ("ch2")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetECX:
+			# print ("hi1")
+			if (countLines(objs[o].specialPOPGadgetRetECX[i]) < 4):
+				gadget2 = objs[o].specialPOPGadgetRetECX[i]
+				bytesPop2 = objs[o].specialPOPBytesRetECX[i]
+				# print ("ch3b")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetECX:
+			# print ("hi2")
+			if (countLines(objs[o].specialPOPGadgetRetECX[i]) < 5):
+				gadget2 = objs[o].specialPOPGadgetRetECX[i]
+				bytesPop2 = objs[o].specialPOPBytesRetECX[i]
+				# print ("ch4b")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetECX:
+			# print ("hi3")
+			if (countLines(objs[o].specialPOPGadgetRetECX[i]) < 6):
+				gadget2 = objs[o].specialPOPGadgetRetECX[i]
+				bytesPop2 = objs[o].specialPOPBytesRetECX[i]
+				# print ("ch5b")
+				return True, gadget2, bytesPop2
+			i+=1			
+		for x in objs[o].specialPOPGadgetRetECX:
+			gadget=x
+		for xx in objs[o].specialPOPBytesRetECX:
+			bytesPop=xx
+		# print ("ch7")
 		return True, gadget, bytesPop
-	except:
-		try:
-			for x in objs[o].specialPOPGadgetRetECX:
-				gadget=x
-			for x in objs[o].specialPOPBytesRetECX:
-				bytesPop=x
-			return True, gadget, bytesPop
-		except:
-			# print "# No gadget found."
-			return False, "",0
-
-
-def returnPopEDX():
+	return False,"0x0000badd, # (base + 0xbadd) # POP Gadget not Found",0 
+def returnPopEDX():  #newest
+	# print ("my best", len(objs[o].specialPOPGadgetRetBestEDX))
+	# print ("my not best", len(objs[o].specialPOPGadgetRetEDX))
 	length = len(objs[o].specialPOPGadgetRetBestEDX) -1
-	try:
+	# for yy in objs[o].specialPOPGadgetRetEDX:
+	# 	print countLines(yy)
+	if objs[o].specialPOPBytesRetEDX:
 		for x in objs[o].specialPOPGadgetRetBestEDX:
 			gadget=x
 		for x in objs[o].specialPOPBytesRetBestEDX:
 			bytesPop=x
 			if (countLines(gadget) <3):
+				# print ("ch1")
 				return True, gadget, bytesPop
 		i=0				
 		for x in objs[o].specialPOPGadgetRetBestEDX:
-			i+=1
 			if (countLines(objs[o].specialPOPGadgetRetBestEDX[i]) < 3):
 				gadget2 = objs[o].specialPOPGadgetRetBestEDX[i]
 				bytesPop2 = objs[o].specialPOPBytesRetBestEDX[i]
+				# print ("ch2")
 				return True, gadget2, bytesPop2
+			i+=1
 		i=0				
 		for x in objs[o].specialPOPGadgetRetBestEDX:
-			i+=1
 			if (countLines(objs[o].specialPOPGadgetRetBestEDX[i]) < 4):
 				gadget2 = objs[o].specialPOPGadgetRetBestEDX[i]
 				bytesPop2 = objs[o].specialPOPBytesRetBestEDX[i]
+				# print ("ch3")
 				return True, gadget2, bytesPop2
-			if i == length:
-				return True, gadget, bytesPop			
-		return True, gadget, bytesPop
-	except:
-		try:
-			for x in objs[o].specialPOPGadgetRetEDX:
-				gadget=x
-			for x in objs[o].specialPOPBytesRetEDX:
-				bytesPop=x
-			return True, gadget, bytesPop
-		except:
-			# print "# No gadget found."
-			return False, "",0
-
-def returnPopEDI():
-	length = len(objs[o].specialPOPGadgetRetBestEDI) -1
-	try:
-		for x in objs[o].specialPOPGadgetRetBestEDI:
+			i+=1
+		if i == length:
+			# print ("ch4")
+			return True, gadget, bytesPop			
+			
+	if objs[o].specialPOPGadgetRetEDX:
+		i=0
+		for x in objs[o].specialPOPBytesRetEDX:
+			if (countLines(objs[o].specialPOPGadgetRetEDX[i]) < 3):
+				gadget2 = objs[o].specialPOPBytesRetEDX[i]
+				bytesPop2 = objs[o].specialPOPGadgetRetEDX[i]
+				# print ("ch2")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetEDX:
+			# print ("hi1")
+			if (countLines(objs[o].specialPOPGadgetRetEDX[i]) < 4):
+				gadget2 = objs[o].specialPOPGadgetRetEDX[i]
+				bytesPop2 = objs[o].specialPOPBytesRetEDX[i]
+				# print ("ch3b")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetEDX:
+			# print ("hi2")
+			if (countLines(objs[o].specialPOPGadgetRetEDX[i]) < 5):
+				gadget2 = objs[o].specialPOPGadgetRetEDX[i]
+				bytesPop2 = objs[o].specialPOPBytesRetEDX[i]
+				# print ("ch4b")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetEDX:
+			# print ("hi3")
+			if (countLines(objs[o].specialPOPGadgetRetEDX[i]) < 6):
+				gadget2 = objs[o].specialPOPGadgetRetEDX[i]
+				bytesPop2 = objs[o].specialPOPBytesRetEDX[i]
+				# print ("ch5b")
+				return True, gadget2, bytesPop2
+			i+=1			
+		for x in objs[o].specialPOPGadgetRetEDX:
 			gadget=x
-		for x in objs[o].specialPOPBytesRetBestEDI:
-			bytesPop=x
-			if (countLines(gadget) <3):
-				return True, gadget, bytesPop
-		i=0				
-		for x in objs[o].specialPOPGadgetRetBestEDI:
-			i+=1
-			if (countLines(objs[o].specialPOPGadgetRetBestEDI[i]) < 3):
-				gadget2 = objs[o].specialPOPGadgetRetBestEDI[i]
-				bytesPop2 = objs[o].specialPOPBytesRetBestEDI[i]
-				return True, gadget2, bytesPop2
-		i=0				
-		for x in objs[o].specialPOPGadgetRetBestEDI:
-			i+=1
-			if (countLines(objs[o].specialPOPGadgetRetBestEDI[i]) < 4):
-				gadget2 = objs[o].specialPOPGadgetRetBestEDI[i]
-				bytesPop2 = objs[o].specialPOPBytesRetBestEDI[i]
-				return True, gadget2, bytesPop2
-			if i == length:
-				return True, gadget, bytesPop			
+		for xx in objs[o].specialPOPBytesRetEDX:
+			bytesPop=xx
+		# print ("ch7")
 		return True, gadget, bytesPop
-	except:
-		try:
-			for x in objs[o].specialPOPGadgetRetEDI:
-				gadget=x
-			for x in objs[o].specialPOPBytesRetEDI:
-				bytesPop=x
-			return True, gadget, bytesPop
-		except:
-			# print "# No gadget found."
-			return False, "",0
-
-def returnPopESI():
+	return False,"0x0000badd, # (base + 0xbadd) # POP Gadget not Found",0 
+def returnPopESI():  #newest
+	# print ("my best", len(objs[o].specialPOPGadgetRetBestESI))
+	# print ("my not best", len(objs[o].specialPOPGadgetRetESI))
 	length = len(objs[o].specialPOPGadgetRetBestESI) -1
-	try:
+	# for yy in objs[o].specialPOPGadgetRetESI:
+	# 	print countLines(yy)
+	if objs[o].specialPOPBytesRetESI:
 		for x in objs[o].specialPOPGadgetRetBestESI:
 			gadget=x
 		for x in objs[o].specialPOPBytesRetBestESI:
 			bytesPop=x
 			if (countLines(gadget) <3):
+				# print ("ch1")
 				return True, gadget, bytesPop
 		i=0				
 		for x in objs[o].specialPOPGadgetRetBestESI:
-			i+=1
 			if (countLines(objs[o].specialPOPGadgetRetBestESI[i]) < 3):
 				gadget2 = objs[o].specialPOPGadgetRetBestESI[i]
 				bytesPop2 = objs[o].specialPOPBytesRetBestESI[i]
+				# print ("ch2")
 				return True, gadget2, bytesPop2
+			i+=1
 		i=0				
 		for x in objs[o].specialPOPGadgetRetBestESI:
-			i+=1
 			if (countLines(objs[o].specialPOPGadgetRetBestESI[i]) < 4):
 				gadget2 = objs[o].specialPOPGadgetRetBestESI[i]
 				bytesPop2 = objs[o].specialPOPBytesRetBestESI[i]
+				# print ("ch3")
 				return True, gadget2, bytesPop2
-			if i == length:
-				return True, gadget, bytesPop			
-		return True, gadget, bytesPop
-	except:
-		try:
-			for x in objs[o].specialPOPGadgetRetESI:
-				gadget=x
-			for x in objs[o].specialPOPBytesRetESI:
-				bytesPop=x
-			return True, gadget, bytesPop
-		except:
-			# print "# No gadget found."
-			return False, "",0
-
-def returnPopEBP():
-	length = len(objs[o].specialPOPGadgetRetBestEBP) -1
-	try:
-		for x in objs[o].specialPOPGadgetRetBestEBP:
+			i+=1
+		if i == length:
+			# print ("ch4")
+			return True, gadget, bytesPop			
+			
+	if objs[o].specialPOPGadgetRetESI:
+		i=0
+		for x in objs[o].specialPOPBytesRetESI:
+			if (countLines(objs[o].specialPOPGadgetRetESI[i]) < 3):
+				gadget2 = objs[o].specialPOPBytesRetESI[i]
+				bytesPop2 = objs[o].specialPOPGadgetRetESI[i]
+				# print ("ch2")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetESI:
+			# print ("hi1")
+			if (countLines(objs[o].specialPOPGadgetRetESI[i]) < 4):
+				gadget2 = objs[o].specialPOPGadgetRetESI[i]
+				bytesPop2 = objs[o].specialPOPBytesRetESI[i]
+				# print ("ch3b")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetESI:
+			# print ("hi2")
+			if (countLines(objs[o].specialPOPGadgetRetESI[i]) < 5):
+				gadget2 = objs[o].specialPOPGadgetRetESI[i]
+				bytesPop2 = objs[o].specialPOPBytesRetESI[i]
+				# print ("ch4b")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetESI:
+			# print ("hi3")
+			if (countLines(objs[o].specialPOPGadgetRetESI[i]) < 6):
+				gadget2 = objs[o].specialPOPGadgetRetESI[i]
+				bytesPop2 = objs[o].specialPOPBytesRetESI[i]
+				# print ("ch5b")
+				return True, gadget2, bytesPop2
+			i+=1			
+		for x in objs[o].specialPOPGadgetRetESI:
 			gadget=x
-		for x in objs[o].specialPOPBytesRetBestEBP:
+		for xx in objs[o].specialPOPBytesRetESI:
+			bytesPop=xx
+		# print ("ch7")
+		return True, gadget, bytesPop
+	return False,"0x0000badd, # (base + 0xbadd) # POP Gadget not Found",0 
+def returnPopEDI():  #newest
+	# print ("my best", len(objs[o].specialPOPGadgetRetBestEDI))
+	# print ("my not best", len(objs[o].specialPOPGadgetRetEDI))
+	length = len(objs[o].specialPOPGadgetRetBestEDI) -1
+	# for yy in objs[o].specialPOPGadgetRetEDI:
+	# 	print countLines(yy)
+	if objs[o].specialPOPBytesRetEDI:
+		for x in objs[o].specialPOPGadgetRetBestEDI:
+			gadget=x
+		for x in objs[o].specialPOPBytesRetBestEDI:
 			bytesPop=x
 			if (countLines(gadget) <3):
+				# print ("ch1")
 				return True, gadget, bytesPop
 		i=0				
-		for x in objs[o].specialPOPGadgetRetBestEBP:
-			i+=1
-			if (countLines(objs[o].specialPOPGadgetRetBestEBP[i]) < 3):
-				gadget2 = objs[o].specialPOPGadgetRetBestEBP[i]
-				bytesPop2 = objs[o].specialPOPBytesRetBestEBP[i]
+		for x in objs[o].specialPOPGadgetRetBestEDI:
+			if (countLines(objs[o].specialPOPGadgetRetBestEDI[i]) < 3):
+				gadget2 = objs[o].specialPOPGadgetRetBestEDI[i]
+				bytesPop2 = objs[o].specialPOPBytesRetBestEDI[i]
+				# print ("ch2")
 				return True, gadget2, bytesPop2
+			i+=1
 		i=0				
-		for x in objs[o].specialPOPGadgetRetBestEBP:
-			i+=1
-			if (countLines(objs[o].specialPOPGadgetRetBestEBP[i]) < 4):
-				gadget2 = objs[o].specialPOPGadgetRetBestEBP[i]
-				bytesPop2 = objs[o].specialPOPBytesRetBestEBP[i]
+		for x in objs[o].specialPOPGadgetRetBestEDI:
+			if (countLines(objs[o].specialPOPGadgetRetBestEDI[i]) < 4):
+				gadget2 = objs[o].specialPOPGadgetRetBestEDI[i]
+				bytesPop2 = objs[o].specialPOPBytesRetBestEDI[i]
+				# print ("ch3")
 				return True, gadget2, bytesPop2
-			if i == length:
-				return True, gadget, bytesPop			
+			i+=1
+		if i == length:
+			# print ("ch4")
+			return True, gadget, bytesPop			
+			
+	if objs[o].specialPOPGadgetRetEDI:
+		i=0
+		for x in objs[o].specialPOPBytesRetEDI:
+			if (countLines(objs[o].specialPOPGadgetRetEDI[i]) < 3):
+				gadget2 = objs[o].specialPOPBytesRetEDI[i]
+				bytesPop2 = objs[o].specialPOPGadgetRetEDI[i]
+				# print ("ch2")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetEDI:
+			# print ("hi1")
+			if (countLines(objs[o].specialPOPGadgetRetEDI[i]) < 4):
+				gadget2 = objs[o].specialPOPGadgetRetEDI[i]
+				bytesPop2 = objs[o].specialPOPBytesRetEDI[i]
+				# print ("ch3b")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetEDI:
+			# print ("hi2")
+			if (countLines(objs[o].specialPOPGadgetRetEDI[i]) < 5):
+				gadget2 = objs[o].specialPOPGadgetRetEDI[i]
+				bytesPop2 = objs[o].specialPOPBytesRetEDI[i]
+				# print ("ch4b")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetEDI:
+			# print ("hi3")
+			if (countLines(objs[o].specialPOPGadgetRetEDI[i]) < 6):
+				gadget2 = objs[o].specialPOPGadgetRetEDI[i]
+				bytesPop2 = objs[o].specialPOPBytesRetEDI[i]
+				# print ("ch5b")
+				return True, gadget2, bytesPop2
+			i+=1			
+		for x in objs[o].specialPOPGadgetRetEDI:
+			gadget=x
+		for xx in objs[o].specialPOPBytesRetEDI:
+			bytesPop=xx
+		# print ("ch7")
 		return True, gadget, bytesPop
-	except:
-		try:
-			for x in objs[o].specialPOPGadgetRetEBP:
-				gadget=x
-			for x in objs[o].specialPOPBytesRetEBP:
-				bytesPop=x
-			return True, gadget, bytesPop
-		except:
-			# print "# No gadget found."
-			return False, "",0
-
-
-def returnPopESP():
+	return False,"0x0000badd, # (base + 0xbadd) # POP Gadget not Found",0 			
+def returnPopESP():  #newest
+	# print ("my best", len(objs[o].specialPOPGadgetRetBestESP))
+	# print ("my not best", len(objs[o].specialPOPGadgetRetESP))
 	length = len(objs[o].specialPOPGadgetRetBestESP) -1
-	try:
+	# for yy in objs[o].specialPOPGadgetRetESP:
+	# 	print countLines(yy)
+	if objs[o].specialPOPBytesRetESP:
 		for x in objs[o].specialPOPGadgetRetBestESP:
 			gadget=x
 		for x in objs[o].specialPOPBytesRetBestESP:
 			bytesPop=x
 			if (countLines(gadget) <3):
+				# print ("ch1")
 				return True, gadget, bytesPop
 		i=0				
 		for x in objs[o].specialPOPGadgetRetBestESP:
-			i+=1
 			if (countLines(objs[o].specialPOPGadgetRetBestESP[i]) < 3):
 				gadget2 = objs[o].specialPOPGadgetRetBestESP[i]
 				bytesPop2 = objs[o].specialPOPBytesRetBestESP[i]
+				# print ("ch2")
 				return True, gadget2, bytesPop2
+			i+=1
 		i=0				
 		for x in objs[o].specialPOPGadgetRetBestESP:
-			i+=1
 			if (countLines(objs[o].specialPOPGadgetRetBestESP[i]) < 4):
 				gadget2 = objs[o].specialPOPGadgetRetBestESP[i]
 				bytesPop2 = objs[o].specialPOPBytesRetBestESP[i]
+				# print ("ch3")
 				return True, gadget2, bytesPop2
-			if i == length:
-				return True, gadget, bytesPop			
+			i+=1
+		if i == length:
+			# print ("ch4")
+			return True, gadget, bytesPop			
+			
+	if objs[o].specialPOPGadgetRetESP:
+		i=0
+		for x in objs[o].specialPOPBytesRetESP:
+			if (countLines(objs[o].specialPOPGadgetRetESP[i]) < 3):
+				gadget2 = objs[o].specialPOPBytesRetESP[i]
+				bytesPop2 = objs[o].specialPOPGadgetRetESP[i]
+				# print ("ch2")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetESP:
+			# print ("hi1")
+			if (countLines(objs[o].specialPOPGadgetRetESP[i]) < 4):
+				gadget2 = objs[o].specialPOPGadgetRetESP[i]
+				bytesPop2 = objs[o].specialPOPBytesRetESP[i]
+				# print ("ch3b")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetESP:
+			# print ("hi2")
+			if (countLines(objs[o].specialPOPGadgetRetESP[i]) < 5):
+				gadget2 = objs[o].specialPOPGadgetRetESP[i]
+				bytesPop2 = objs[o].specialPOPBytesRetESP[i]
+				# print ("ch4b")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetESP:
+			# print ("hi3")
+			if (countLines(objs[o].specialPOPGadgetRetESP[i]) < 6):
+				gadget2 = objs[o].specialPOPGadgetRetESP[i]
+				bytesPop2 = objs[o].specialPOPBytesRetESP[i]
+				# print ("ch5b")
+				return True, gadget2, bytesPop2
+			i+=1			
+		for x in objs[o].specialPOPGadgetRetESP:
+			gadget=x
+		for xx in objs[o].specialPOPBytesRetESP:
+			bytesPop=xx
+		print ("ch7")
 		return True, gadget, bytesPop
-	except:
-		try:
-			for x in objs[o].specialPOPGadgetRetESP:
-				gadget=x
-			for x in objs[o].specialPOPBytesRetESP:
-				bytesPop=x
-			return True, gadget, bytesPop
-		except:
-			# print "# No gadget found."
-			return False, "",0
+	return False,"0x0000badd, # (base + 0xbadd) # POP Gadget not Found",0 
+def returnPopEBP():  #newest
+	# print ("my best", len(objs[o].specialPOPGadgetRetBestEBP))
+	# print ("my not best", len(objs[o].specialPOPGadgetRetEBP))
+	length = len(objs[o].specialPOPGadgetRetBestEBP) -1
+	# for yy in objs[o].specialPOPGadgetRetEBP:
+	# 	print countLines(yy)
+	if objs[o].specialPOPBytesRetEBP:
+		for x in objs[o].specialPOPGadgetRetBestEBP:
+			gadget=x
+		for x in objs[o].specialPOPBytesRetBestEBP:
+			bytesPop=x
+			if (countLines(gadget) <3):
+				# print ("ch1")
+				return True, gadget, bytesPop
+		i=0				
+		for x in objs[o].specialPOPGadgetRetBestEBP:
+			if (countLines(objs[o].specialPOPGadgetRetBestEBP[i]) < 3):
+				gadget2 = objs[o].specialPOPGadgetRetBestEBP[i]
+				bytesPop2 = objs[o].specialPOPBytesRetBestEBP[i]
+				# print ("ch2")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPGadgetRetBestEBP:
+			if (countLines(objs[o].specialPOPGadgetRetBestEBP[i]) < 4):
+				gadget2 = objs[o].specialPOPGadgetRetBestEBP[i]
+				bytesPop2 = objs[o].specialPOPBytesRetBestEBP[i]
+				# print ("ch3")
+				return True, gadget2, bytesPop2
+			i+=1
+		if i == length:
+			# print ("ch4")
+			return True, gadget, bytesPop			
+			
+	if objs[o].specialPOPGadgetRetEBP:
+		i=0
+		for x in objs[o].specialPOPBytesRetEBP:
+			if (countLines(objs[o].specialPOPGadgetRetEBP[i]) < 3):
+				gadget2 = objs[o].specialPOPBytesRetEBP[i]
+				bytesPop2 = objs[o].specialPOPGadgetRetEBP[i]
+				# print ("ch2")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetEBP:
+			# print ("hi1")
+			if (countLines(objs[o].specialPOPGadgetRetEBP[i]) < 4):
+				gadget2 = objs[o].specialPOPGadgetRetEBP[i]
+				bytesPop2 = objs[o].specialPOPBytesRetEBP[i]
+				# print ("ch3b")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetEBP:
+			# print ("hi2")
+			if (countLines(objs[o].specialPOPGadgetRetEBP[i]) < 5):
+				gadget2 = objs[o].specialPOPGadgetRetEBP[i]
+				bytesPop2 = objs[o].specialPOPBytesRetEBP[i]
+				# print ("ch4b")
+				return True, gadget2, bytesPop2
+			i+=1
+		i=0				
+		for x in objs[o].specialPOPBytesRetEBP:
+			# print ("hi3")
+			if (countLines(objs[o].specialPOPGadgetRetEBP[i]) < 6):
+				gadget2 = objs[o].specialPOPGadgetRetEBP[i]
+				bytesPop2 = objs[o].specialPOPBytesRetEBP[i]
+				# print ("ch5b")
+				return True, gadget2, bytesPop2
+			i+=1			
+		for x in objs[o].specialPOPGadgetRetEBP:
+			gadget=x
+		for xx in objs[o].specialPOPBytesRetEBP:
+			bytesPop=xx
+		print ("ch7")
+		return True, gadget, bytesPop
+	return False,"0x0000badd, # (base + 0xbadd) # POP Gadget not Found",0 
+
+
 def preprocessOP_JMPPTR(NumOpsDis, Reg):
 	Reg = Reg.upper()
 	global o
@@ -18840,11 +22672,12 @@ def preprocessOP_JMP(NumOpsDis, Reg):
 
 def printlistOP_SP2(NumOpsDis, Reg):
 	global o
+	global directory
 	clearHashChecker()
 	idval = 1
-	while os.path.exists("%s-S_PIVOT__%s.txt" % (peName, idval)):
+	while os.path.exists("%s%s-S_PIVOT__%s.txt" % (directory, peName, idval)):
 	    idval += 1
-	filename = peName +"-"+"S_PIVOT__" + str(idval) + ".txt"
+	filename = directory + peName +"-"+"S_PIVOT__" + str(idval) + ".txt"
 	global fname
 	fname= filename
 	with open(filename, 'a') as f:
@@ -18932,7 +22765,7 @@ def printlistOP_SP2(NumOpsDis, Reg):
 					num = objs[o].listOP_BaseStackPivotESP_NumOps[i]
 					mod = objs[o].listOP_BaseStackPivotESP_Module[i]
 					spe = objs[o].listOP_BaseStackPivotESP_Special[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)  + "\t"  + str(spe) + " bytes "
+				out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t"   + "\t"  + str(spe) + " bytes "
 				spbytes =0
 				SPSuccess=False
 				SPSuccess, spgadget, spbytes= disHereCleanSP(addy, cnt, num, spe, Reg, mod) 
@@ -18973,1899 +22806,1506 @@ def printlistOP_SP2(NumOpsDis, Reg):
 	nope(filename, total)
 
 
-
 def printlistOP_StackPivot(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Stack Pivot"
+	lock = False
 	global o
-	idval = 1
+	Reg=""
+	empty=""
+	o=0
 	clearHashChecker()
-	while os.path.exists("%s-STACK_PIVOT_%s-%s.txt" % (peName, Reg, idval)):
-	    idval += 1
-	filename = peName +"-STACK_PIVOT_" + Reg + "-" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			if Reg != "0":
-				cnt1 = objs[o].listOP_BaseStackPivot_NumOps.__len__()
-			for i in range (cnt1):
-				addy =0
-				cnt = 0   #
-				num = 0
-				if Reg != "0":
-						addy = objs[o].listOP_BaseStackPivot = []
-						cnt = objs[o].listOP_BaseStackPivot_CNT = []
-						num = objs[o].listOP_BaseStackPivot_NumOps = []
-						mod = objs[o].listOP_BaseStackPivot_Module = []
-						spe = objs[o].listOP_BaseStackPivot_Special = []
-				
-				out = "Ops: " + str(num) + "\tMod: " + str(mod) + "\tPivot: " + str(spec)
-				cat = disHereClean3(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if cnt1 > 0:
-				temp.append(out)
-			total = total + cnt1	
-			o = o + 1
-			clearGOuts()
-		for out in temp:
-			#print out
-			pass#print >> f, out
-		out = "JOP ROCKET"#"# Grand total ROTATE RIGHT "  + str(Reg) + " : " + str(total)
-		#print out
-		print >> f, out
-	o = 0
 	counterReset()
-	clearGOuts()
-	nope(filename, total)
-	print "bye"
-	sp()
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseStackPivot.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
+				addy = objs[o].listOP_BaseStackPivot[i]
+				cnt = objs[o].listOP_BaseStackPivot_CNT[i]
+				num = objs[o].listOP_BaseStackPivot_NumOps[i]
+				mod = objs[o].listOP_BaseStackPivot_Module[i]
+				spe = objs[o].listOP_BaseStackPivot_Special = []
+			out = str(mod) + "\t[Ops: " + str(num)+ "]\t"+ "\tPivot: " + str(spec) + "\t"
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, empty, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
 
 
 def printlistOP_Add(NumOpsDis, Reg):
 	global printAdd
-	global filename
-	if printAdd:
-	
-
-		global o
-		clearHashChecker()
-		idval = 1
-		# print "in printlistop_add"
-		while os.path.exists("%s-ADD_OP_%s_%s.txt" % (peName, Reg, idval)):
-		    idval += 1
-		filename = peName +"-"+"ADD_OP_"+Reg+"_" + str(idval) + ".txt"
-		
-		fname = filename
-		with open(filename, 'a') as f:
-			counterReset()
-			i=0
-			total = 0
-			temp = []
-			for obj in objs:
-				if Reg == "ALL":
-					cnt1 = objs[o].listOP_BaseAdd.__len__()
-				if Reg == "EAX":
-					cnt1 = objs[o].listOP_BaseAddEAX.__len__()
-				if Reg == "EBX":
-					cnt1 = objs[o].listOP_BaseAddEBX.__len__()
-				if Reg == "ECX":
-					cnt1 = objs[o].listOP_BaseAddECX.__len__()
-				if Reg == "EDX":
-					cnt1 = objs[o].listOP_BaseAddEDX.__len__()
-				if Reg == "ESI":
-					cnt1 = objs[o].listOP_BaseAddESI.__len__()
-				if Reg == "EDI":
-					cnt1 = objs[o].listOP_BaseAddEDI.__len__()
-				if Reg == "ESP":
-					cnt1 = objs[o].listOP_BaseAddESP.__len__()
-				if Reg == "EBP":
-					cnt1 = objs[o].listOP_BaseAddEBP.__len__()
-
-				for i in range (cnt1):
-					##print "\n@ADD^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
-					#print >> f, "@ADD*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					#counter()
-					##counterShow()
-
-					addy =0
-					cnt = 0   #
-					num = 0
-					if Reg == "ALL":
-						addy = objs[o].listOP_BaseAdd[i]
-						cnt = objs[o].listOP_BaseAdd_CNT[i]
-						num = objs[o].listOP_BaseAdd_NumOps[i]
-						mod = objs[o].listOP_BaseAdd_Module[i]
-					if Reg == "EAX":
-						addy = objs[o].listOP_BaseAddEAX[i]
-						cnt = objs[o].listOP_BaseAddEAX_CNT[i]
-						num = objs[o].listOP_BaseAddEAX_NumOps[i]
-						mod = objs[o].listOP_BaseAddEAX_Module[i]
-					if Reg == "EBX":
-						addy = objs[o].listOP_BaseAddEBX[i]
-						cnt = objs[o].listOP_BaseAddEBX_CNT[i]
-						num = objs[o].listOP_BaseAddEBX_NumOps[i]
-						mod = objs[o].listOP_BaseAddEBX_Module[i]
-					if Reg == "ECX":
-						addy = objs[o].listOP_BaseAddECX[i]
-						cnt = objs[o].listOP_BaseAddECX_CNT[i]
-						num = objs[o].listOP_BaseAddECX_NumOps[i]
-						mod = objs[o].listOP_BaseAddECX_Module[i]
-					if Reg == "EDX":
-						addy = objs[o].listOP_BaseAddEDX[i]
-						cnt = objs[o].listOP_BaseAddEDX_CNT[i]
-						num = objs[o].listOP_BaseAddEDX_NumOps[i]
-						mod = objs[o].listOP_BaseAddEDX_Module[i]
-					if Reg == "ESI":
-						addy = objs[o].listOP_BaseAddESI[i]
-						cnt = objs[o].listOP_BaseAddESI_CNT[i]
-						num = objs[o].listOP_BaseAddESI_NumOps[i]
-						mod = objs[o].listOP_BaseAddESI_Module[i]
-					if Reg == "EDI":
-						addy = objs[o].listOP_BaseAddEDI[i]
-						cnt = objs[o].listOP_BaseAddEDI_CNT[i]
-						num = objs[o].listOP_BaseAddEDI_NumOps[i]
-						mod = objs[o].listOP_BaseAddEDI_Module[i]
-					if Reg == "EBP":
-						addy = objs[o].listOP_BaseAddEBP[i]
-						cnt = objs[o].listOP_BaseAddEBP_CNT[i]
-						num = objs[o].listOP_BaseAddEBP_NumOps[i]
-						mod = objs[o].listOP_BaseAddEBP_Module[i]
-					if Reg == "ESP":
-						addy = objs[o].listOP_BaseAddESP[i]
-						cnt = objs[o].listOP_BaseAddESP_CNT[i]
-						num = objs[o].listOP_BaseAddESP_NumOps[i]
-						mod = objs[o].listOP_BaseAddESP_Module[i]
-					out = "Ops: " + str(num) + "\tMod: " + str(mod) 
-					##print out
-					cat = disHereClean3(addy, cnt, num,"jmp")
-					if not cat == " ":
-						print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-						counter()
-						print >> f, Ct () + "\t" + out
-						print >> f, cat
-
-				if cnt1 > 0:
-				#	out = "# Add " + str(Reg) + " " + str(mod) + " total: " + str(cnt1) 
-					temp.append(out)
-				total = total + cnt1	
-				# cnteax = objs[0].listOP_BaseAddEAX.__len__()
-				# print  "eax: " + str(cnteax)
-				# cntebx = objs[0].listOP_BaseAddEBX.__len__()
-				# print  "ebx: " + str(cntebx)
-				# cntecx = objs[0].listOP_BaseAddECX.__len__()
-				# print  "ecx: " + str(cntecx)
-				# cntedx = objs[0].listOP_BaseAddEDX.__len__()
-				# print  "edx: " + str(cntedx)
-				# cntesi = objs[0].listOP_BaseAddESI.__len__()
-				# print  "esi: " + str(cntesi)
-				# cntedi = objs[0].listOP_BaseAddEDI.__len__()
-				# print  "edi: " + str(cntedi)
-				# cntesp = objs[0].listOP_BaseAddESP.__len__()
-				# print  "esp: " + str(cntesp)
-				# cntebp = objs[0].listOP_BaseAddEBP.__len__()
-				# print  "ebp: " + str(cntebp)
-				
-				o = o + 1
-				clearGOuts()
-				# print "after cleargouts"
-			out = "\nJOP ROCKET" #out = ""#"# Grand total ADD "  + str(Reg) + " : " + str(total)
-			print >> f, out
-		# print "trying to reset to o??"
-		o = 0
-		f.close()
-		# print "after f.close"
-		nope(filename, total)
-
-
-def nope(filename, total):
-	
-	size = os.stat(filename).st_size
-	# print "nope " + filename
-	if total == 0:
-		try:
-			# print "remove " + filename
-			os.remove(filename)
-			#print "removing " + str(filename)
-		except OSError:
-			pass
-	if size < 20:
-		try:
-			# print "cutting down " + filename
-			os.remove(filename)
-			#print "removing " + str(filename)
-		except OSError:
-			pass
-	else:
-		# print "\t" + str(filename)  + " " +str(size) + " bytes"
-		# print size
-		pass
-
-oldFilename=""
-def nope3(filename):
-	global oldFilename
-	try:
-		size = os.stat(filename).st_size
-
-		# print "nope3 " + filename
-		if size < 10:
-			try:
-				# print "n3 cutting down " + filename
-				os.remove(filename)
-				#print "removing " + str(filename)
-			except OSError:
-				pass
-		else:
-			if (oldFilename != filename):
-				print "\t" + str(filename)  + " \t" +str(float(size)/1000.0) + " kb"
-			oldFilename=filename
-
-			# print size
-	except:
-		oldFilename=filename
-		pass
-# Prevents files from being printed if empty or have no results - just removes them.
-
-
-def nope2(filename, total, index):
-	if total < 1:  
-		try:
-			os.remove(filename)
-#			print "removing " + str(filename)
-			sp()
-		except OSError:
-			pass
-
-	else:
-		if index == 0:
-			if total == 1:
-				os.remove(filename)
-				sp()
-			else:
-				# print "\t" + str(filename)
-				sp()
-		else:
-			# print "\t" + str(filename)
-			sp()
+	global directory
+	global printStyle
+	operation="ADD OP"
+	lock = False
+	global o
+	o=0
+	clearHashChecker()
+	counterReset()
+	i=0
+	for obj in objs:
+		if Reg == "ALL":
+			cnt1 = objs[o].listOP_BaseAdd.__len__()
+		if Reg == "EAX":
+			cnt1 = objs[o].listOP_BaseAddEAX.__len__()
+		if Reg == "EBX":
+			cnt1 = objs[o].listOP_BaseAddEBX.__len__()
+		if Reg == "ECX":
+			cnt1 = objs[o].listOP_BaseAddECX.__len__()
+		if Reg == "EDX":
+			cnt1 = objs[o].listOP_BaseAddEDX.__len__()
+		if Reg == "ESI":
+			cnt1 = objs[o].listOP_BaseAddESI.__len__()
+		if Reg == "EDI":
+			cnt1 = objs[o].listOP_BaseAddEDI.__len__()
+		if Reg == "ESP":
+			cnt1 = objs[o].listOP_BaseAddESP.__len__()
+		if Reg == "EBP":
+			cnt1 = objs[o].listOP_BaseAddEBP.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg == "ALL":
+				addy = objs[o].listOP_BaseAdd[i]
+				cnt = objs[o].listOP_BaseAdd_CNT[i]
+				num = objs[o].listOP_BaseAdd_NumOps[i]
+				mod = objs[o].listOP_BaseAdd_Module[i]
+			if Reg == "EAX":
+				addy = objs[o].listOP_BaseAddEAX[i]
+				cnt = objs[o].listOP_BaseAddEAX_CNT[i]
+				num = objs[o].listOP_BaseAddEAX_NumOps[i]
+				mod = objs[o].listOP_BaseAddEAX_Module[i]
+			if Reg == "EBX":
+				addy = objs[o].listOP_BaseAddEBX[i]
+				cnt = objs[o].listOP_BaseAddEBX_CNT[i]
+				num = objs[o].listOP_BaseAddEBX_NumOps[i]
+				mod = objs[o].listOP_BaseAddEBX_Module[i]
+			if Reg == "ECX":
+				addy = objs[o].listOP_BaseAddECX[i]
+				cnt = objs[o].listOP_BaseAddECX_CNT[i]
+				num = objs[o].listOP_BaseAddECX_NumOps[i]
+				mod = objs[o].listOP_BaseAddECX_Module[i]
+			if Reg == "EDX":
+				addy = objs[o].listOP_BaseAddEDX[i]
+				cnt = objs[o].listOP_BaseAddEDX_CNT[i]
+				num = objs[o].listOP_BaseAddEDX_NumOps[i]
+				mod = objs[o].listOP_BaseAddEDX_Module[i]
+			if Reg == "ESI":
+				addy = objs[o].listOP_BaseAddESI[i]
+				cnt = objs[o].listOP_BaseAddESI_CNT[i]
+				num = objs[o].listOP_BaseAddESI_NumOps[i]
+				mod = objs[o].listOP_BaseAddESI_Module[i]
+			if Reg == "EDI":
+				addy = objs[o].listOP_BaseAddEDI[i]
+				cnt = objs[o].listOP_BaseAddEDI_CNT[i]
+				num = objs[o].listOP_BaseAddEDI_NumOps[i]
+				mod = objs[o].listOP_BaseAddEDI_Module[i]
+			if Reg == "EBP":
+				addy = objs[o].listOP_BaseAddEBP[i]
+				cnt = objs[o].listOP_BaseAddEBP_CNT[i]
+				num = objs[o].listOP_BaseAddEBP_NumOps[i]
+				mod = objs[o].listOP_BaseAddEBP_Module[i]
+			if Reg == "ESP":
+				addy = objs[o].listOP_BaseAddESP[i]
+				cnt = objs[o].listOP_BaseAddESP_CNT[i]
+				num = objs[o].listOP_BaseAddESP_NumOps[i]
+				mod = objs[o].listOP_BaseAddESP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num,"jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+	o = 0
 
 def printlistOP_Sub(NumOpsDis, Reg):
+	global printSub
+	global directory
+	global printStyle
+	operation="Sub OP"
+	lock = False
 	global o
-	idval = 1
+	o=0
 	clearHashChecker()
-	while os.path.exists("%s-SUB_OP_%s-%s.txt" % (peName, Reg, idval)):
-	    idval += 1
-	filename = peName +"-SUB_OP_" + Reg + "-" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			if Reg == "ALL":
-				cnt1 = objs[o].listOP_BaseSub.__len__()
-
-			if Reg == "EAX":
-				cnt1 = objs[o].listOP_BaseSubEAX.__len__()
-			if Reg == "EBX":
-				cnt1 = objs[o].listOP_BaseSubEBX.__len__()
-			if Reg == "ECX":
-				cnt1 = objs[o].listOP_BaseSubECX.__len__()
-			if Reg == "EDX":
-				cnt1 = objs[o].listOP_BaseSubEDX.__len__()
-			if Reg == "ESI":
-				cnt1 = objs[o].listOP_BaseSubESI.__len__()
-			if Reg == "EDI":
-				cnt1 = objs[o].listOP_BaseSubEDI.__len__()
-			if Reg == "ESP":
-				cnt1 = objs[o].listOP_BaseSubESP.__len__()
-			if Reg == "EBP":
-				cnt1 = objs[o].listOP_BaseSubEBP.__len__()
-			for i in range (cnt1):
-
-				addy =0
-				cnt = 0   #
-				num = 0
-				if Reg == "ALL":
-					addy = objs[o].listOP_BaseSub[i]
-					cnt = objs[o].listOP_BaseSub_CNT[i]
-					num = objs[o].listOP_BaseSub_NumOps[i]
-					mod = objs[o].listOP_BaseSub_Module[i]
-				if Reg == "EAX":
-					addy = objs[o].listOP_BaseSubEAX[i]
-					cnt = objs[o].listOP_BaseSubEAX_CNT[i]
-					num = objs[o].listOP_BaseSubEAX_NumOps[i]
-					mod = objs[o].listOP_BaseSubEAX_Module[i]
-				if Reg == "EBX":
-					addy = objs[o].listOP_BaseSubEBX[i]
-					cnt = objs[o].listOP_BaseSubEBX_CNT[i]
-					num = objs[o].listOP_BaseSubEBX_NumOps[i]
-					mod = objs[o].listOP_BaseSubEBX_Module[i]
-				if Reg == "ECX":
-					addy = objs[o].listOP_BaseSubECX[i]
-					cnt = objs[o].listOP_BaseSubECX_CNT[i]
-					num = objs[o].listOP_BaseSubECX_NumOps[i]
-					mod = objs[o].listOP_BaseSubECX_Module[i]
-				if Reg == "EDX":
-					addy = objs[o].listOP_BaseSubEDX[i]
-					cnt = objs[o].listOP_BaseSubEDX_CNT[i]
-					num = objs[o].listOP_BaseSubEDX_NumOps[i]
-					mod = objs[o].listOP_BaseSubEDX_Module[i]
-				if Reg == "ESI":
-					addy = objs[o].listOP_BaseSubESI[i]
-					cnt = objs[o].listOP_BaseSubESI_CNT[i]
-					num = objs[o].listOP_BaseSubESI_NumOps[i]
-					mod = objs[o].listOP_BaseSubESI_Module[i]
-				if Reg == "EDI":
-					addy = objs[o].listOP_BaseSubEDI[i]
-					cnt = objs[o].listOP_BaseSubEDI_CNT[i]
-					num = objs[o].listOP_BaseSubEDI_NumOps[i]
-					mod = objs[o].listOP_BaseSubEDI_Module[i]
-				if Reg == "EBP":
-					addy = objs[o].listOP_BaseSubEBP[i]
-					cnt = objs[o].listOP_BaseSubEBP_CNT[i]
-					num = objs[o].listOP_BaseSubEBP_NumOps[i]
-					mod = objs[o].listOP_BaseSubEBP_Module[i]
-				if Reg == "ESP":
-					addy = objs[o].listOP_BaseSubESP[i]
-					cnt = objs[o].listOP_BaseSubESP_CNT[i]
-					num = objs[o].listOP_BaseSubESP_NumOps[i]
-					mod = objs[o].listOP_BaseSubESP_Module[i]
-				
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if cnt1 > 0:
-				#out = "# SUB " + str(Reg) + " " + str(mod) + " total: " + str(cnt1) 
-				temp.append(out)
-			total = total + cnt1	
-			o = o + 1
-			clearGOuts()
-		for out in temp:
-			#print out
-			print >> f, out
-		out = "\nJOP ROCKET"#"# Grand total SUB "  + str(Reg) + " : " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	nope(filename, total)
-
-def printlistOP_Mul(NumOpsDis, Reg):  
-	global o
-	idval = 1
-	clearHashChecker()
-	while os.path.exists("%s-MUL_OP_%s-%s.txt" % (peName, Reg, idval)):
-	    idval += 1
-	filename = peName +"-MUL_OP_" + Reg + "-" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			if Reg == "ALL":
-				cnt1 = objs[o].listOP_BaseMul.__len__()
-
-			if Reg == "EAX":
-				cnt1 = objs[o].listOP_BaseMulEAX.__len__()
-			if Reg == "EBX":
-				cnt1 = objs[o].listOP_BaseMulEBX.__len__()
-			if Reg == "ECX":
-				cnt1 = objs[o].listOP_BaseMulECX.__len__()
-			if Reg == "EDX":
-				cnt1 = objs[o].listOP_BaseMulEDX.__len__()
-			if Reg == "ESI":
-				cnt1 = objs[o].listOP_BaseMulESI.__len__()
-			if Reg == "EDI":
-				cnt1 = objs[o].listOP_BaseMulEDI.__len__()
-			if Reg == "ESP":
-				cnt1 = objs[o].listOP_BaseMulESP.__len__()
-			if Reg == "EBP":
-				cnt1 = objs[o].listOP_BaseMulEBP.__len__()
-			for i in range (cnt1):
-
-				addy =0
-				cnt = 0   #
-				num = 0
-				if Reg == "ALL":
-					addy = objs[o].listOP_BaseMul[i]
-					cnt = objs[o].listOP_BaseMul_CNT[i]
-					num = objs[o].listOP_BaseMul_NumOps[i]
-					mod = objs[o].listOP_BaseMul_Module[i]
-
-				if Reg == "EAX":
-					addy = objs[o].listOP_BaseMulEAX[i]
-					cnt = objs[o].listOP_BaseMulEAX_CNT[i]
-					num = objs[o].listOP_BaseMulEAX_NumOps[i]
-					mod = objs[o].listOP_BaseMulEAX_Module[i]
-				if Reg == "EBX":
-					addy = objs[o].listOP_BaseMulEBX[i]
-					cnt = objs[o].listOP_BaseMulEBX_CNT[i]
-					num = objs[o].listOP_BaseMulEBX_NumOps[i]
-					mod = objs[o].listOP_BaseMulEBX_Module[i]
-				if Reg == "ECX":
-					addy = objs[o].listOP_BaseMulECX[i]
-					cnt = objs[o].listOP_BaseMulECX_CNT[i]
-					num = objs[o].listOP_BaseMulECX_NumOps[i]
-					mod = objs[o].listOP_BaseMulECX_Module[i]
-				if Reg == "EDX":
-					addy = objs[o].listOP_BaseMulEDX[i]
-					cnt = objs[o].listOP_BaseMulEDX_CNT[i]
-					num = objs[o].listOP_BaseMulEDX_NumOps[i]
-					mod = objs[o].listOP_BaseMulEDX_Module[i]
-				if Reg == "ESI":
-					addy = objs[o].listOP_BaseMulESI[i]
-					cnt = objs[o].listOP_BaseMulESI_CNT[i]
-					num = objs[o].listOP_BaseMulESI_NumOps[i]
-					mod = objs[o].listOP_BaseMulESI_Module[i]
-				if Reg == "EDI":
-					addy = objs[o].listOP_BaseMulEDI[i]
-					cnt = objs[o].listOP_BaseMulEDI_CNT[i]
-					num = objs[o].listOP_BaseMulEDI_NumOps[i]
-					mod = objs[o].listOP_BaseMulEDI_Module[i]
-				if Reg == "EBP":
-					addy = objs[o].listOP_BaseMulEBP[i]
-					cnt = objs[o].listOP_BaseMulEBP_CNT[i]
-					num = objs[o].listOP_BaseMulEBP_NumOps[i]
-					mod = objs[o].listOP_BaseMulEBP_Module[i]
-				if Reg == "ESP":
-					addy = objs[o].listOP_BaseMulESP[i]
-					cnt = objs[o].listOP_BaseMulESP_CNT[i]
-					num = objs[o].listOP_BaseMulESP_NumOps[i]
-					mod = objs[o].listOP_BaseMulESP_Module[i]
-				
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if cnt1 > 0:
-				#out = "# MUL " + str(Reg) + " " + str(mod) + " total: " + str(cnt1) 
-				temp.append(out)
-			total = total + cnt1	
-			o = o + 1
-			clearGOuts()
-		for out in temp:
-			pass#print out
-			#print >> f, out
-		out = "JOP ROCKET"#"# Grand total MUL "  + str(Reg) + " : " + str(total)
-		#print total
-		#print out
-		print >> f, out
-	o = 0
-	nope(filename, total)
-
-def printlistOP_Div(NumOpsDis, Reg): #6
-	global o
-	global fname
-	idval = 1
-	clearHashChecker()
-	while os.path.exists("%s-DIV_OP_%s-%s.txt" % (peName, Reg, idval)):
-	    idval += 1
-	filename = peName +"-DIV_OP_" + Reg + "-" + str(idval) + ".txt"
-	fname = filename
-
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			if Reg == "ALL":
-				cnt1 = objs[o].listOP_BaseDiv.__len__()
-			if Reg == "EAX":
-				cnt1 = objs[o].listOP_BaseDivEAX.__len__()
-			if Reg == "EDX":
-				cnt1 = objs[o].listOP_BaseDivEDX.__len__()
-			for i in range (cnt1):
-				#print "\n@DIV^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
-				#print >> f, "@DIV*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-
-				addy =0
-				cnt = 0   #
-				num = 0
-				if Reg == "ALL":
-					addy = objs[o].listOP_BaseDiv[i]
-					cnt = objs[o].listOP_BaseDiv_CNT[i]
-					num = objs[o].listOP_BaseDiv_NumOps[i]
-					mod = objs[o].listOP_BaseDiv_Module[i]
-				if Reg == "EAX":
-					addy = objs[o].listOP_BaseDivEAX[i]
-					cnt = objs[o].listOP_BaseDivEAX_CNT[i]
-					num = objs[o].listOP_BaseDivEAX_NumOps[i]
-					mod = objs[o].listOP_BaseDivEAX_Module[i]
-				if Reg == "EDX":
-					addy = objs[o].listOP_BaseDivEDX[i]
-					cnt = objs[o].listOP_BaseDivEDX_CNT[i]
-					num = objs[o].listOP_BaseDivEDX_NumOps[i]
-					mod = objs[o].listOP_BaseDivEDX_Module[i]
-				
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if cnt1 > 0:
-				out = "# DIV " + str(Reg) + " " + str(mod) + " total: " + str(cnt1) 
-				temp.append(out)
-			total = total + cnt1	
-			o = o + 1
-			clearGOuts()
-		for out in temp:
-			#print out
-			pass#print >> f, out
-		# out = "\nJOP ROCKET"#"# Grand total DIV "  + str(Reg) + " : " + str(total)
-		#print out
-		print >> f, out
-	o = 0
 	counterReset()
-	clearGOuts()
-	nope(filename, total)
+	i=0
+	for obj in objs:
+		if Reg == "ALL":
+			cnt1 = objs[o].listOP_BaseSub.__len__()
+		if Reg == "EAX":
+			cnt1 = objs[o].listOP_BaseSubEAX.__len__()
+		if Reg == "EBX":
+			cnt1 = objs[o].listOP_BaseSubEBX.__len__()
+		if Reg == "ECX":
+			cnt1 = objs[o].listOP_BaseSubECX.__len__()
+		if Reg == "EDX":
+			cnt1 = objs[o].listOP_BaseSubEDX.__len__()
+		if Reg == "ESI":
+			cnt1 = objs[o].listOP_BaseSubESI.__len__()
+		if Reg == "EDI":
+			cnt1 = objs[o].listOP_BaseSubEDI.__len__()
+		if Reg == "ESP":
+			cnt1 = objs[o].listOP_BaseSubESP.__len__()
+		if Reg == "EBP":
+			cnt1 = objs[o].listOP_BaseSubEBP.__len__()
+		for i in range (cnt1):
+			# print "I AM IN CNT1"
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg == "ALL":
+				addy = objs[o].listOP_BaseSub[i]
+				cnt = objs[o].listOP_BaseSub_CNT[i]
+				num = objs[o].listOP_BaseSub_NumOps[i]
+				mod = objs[o].listOP_BaseSub_Module[i]
+			if Reg == "EAX":
+				addy = objs[o].listOP_BaseSubEAX[i]
+				cnt = objs[o].listOP_BaseSubEAX_CNT[i]
+				num = objs[o].listOP_BaseSubEAX_NumOps[i]
+				mod = objs[o].listOP_BaseSubEAX_Module[i]
+			if Reg == "EBX":
+				addy = objs[o].listOP_BaseSubEBX[i]
+				cnt = objs[o].listOP_BaseSubEBX_CNT[i]
+				num = objs[o].listOP_BaseSubEBX_NumOps[i]
+				mod = objs[o].listOP_BaseSubEBX_Module[i]
+			if Reg == "ECX":
+				addy = objs[o].listOP_BaseSubECX[i]
+				cnt = objs[o].listOP_BaseSubECX_CNT[i]
+				num = objs[o].listOP_BaseSubECX_NumOps[i]
+				mod = objs[o].listOP_BaseSubECX_Module[i]
+			if Reg == "EDX":
+				addy = objs[o].listOP_BaseSubEDX[i]
+				cnt = objs[o].listOP_BaseSubEDX_CNT[i]
+				num = objs[o].listOP_BaseSubEDX_NumOps[i]
+				mod = objs[o].listOP_BaseSubEDX_Module[i]
+			if Reg == "ESI":
+				addy = objs[o].listOP_BaseSubESI[i]
+				cnt = objs[o].listOP_BaseSubESI_CNT[i]
+				num = objs[o].listOP_BaseSubESI_NumOps[i]
+				mod = objs[o].listOP_BaseSubESI_Module[i]
+			if Reg == "EDI":
+				addy = objs[o].listOP_BaseSubEDI[i]
+				cnt = objs[o].listOP_BaseSubEDI_CNT[i]
+				num = objs[o].listOP_BaseSubEDI_NumOps[i]
+				mod = objs[o].listOP_BaseSubEDI_Module[i]
+			if Reg == "EBP":
+				addy = objs[o].listOP_BaseSubEBP[i]
+				cnt = objs[o].listOP_BaseSubEBP_CNT[i]
+				num = objs[o].listOP_BaseSubEBP_NumOps[i]
+				mod = objs[o].listOP_BaseSubEBP_Module[i]
+			if Reg == "ESP":
+				addy = objs[o].listOP_BaseSubESP[i]
+				cnt = objs[o].listOP_BaseSubESP_CNT[i]
+				num = objs[o].listOP_BaseSubESP_NumOps[i]
+				mod = objs[o].listOP_BaseSubESP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num,"jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+	o = 0
 
+def printlistOP_Mul(NumOpsDis, Reg):
+	global printMul
+	global directory
+	global printStyle
+	operation="Mul OP"
+	lock = False
+	global o
+	o=0
+	clearHashChecker()
+	counterReset()
+	i=0
+	for obj in objs:
+		if Reg == "ALL":
+			cnt1 = objs[o].listOP_BaseMul.__len__()
+		if Reg == "EAX":
+			cnt1 = objs[o].listOP_BaseMulEAX.__len__()
+		if Reg == "EBX":
+			cnt1 = objs[o].listOP_BaseMulEBX.__len__()
+		if Reg == "ECX":
+			cnt1 = objs[o].listOP_BaseMulECX.__len__()
+		if Reg == "EDX":
+			cnt1 = objs[o].listOP_BaseMulEDX.__len__()
+		if Reg == "ESI":
+			cnt1 = objs[o].listOP_BaseMulESI.__len__()
+		if Reg == "EDI":
+			cnt1 = objs[o].listOP_BaseMulEDI.__len__()
+		if Reg == "ESP":
+			cnt1 = objs[o].listOP_BaseMulESP.__len__()
+		if Reg == "EBP":
+			cnt1 = objs[o].listOP_BaseMulEBP.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg == "ALL":
+				addy = objs[o].listOP_BaseMul[i]
+				cnt = objs[o].listOP_BaseMul_CNT[i]
+				num = objs[o].listOP_BaseMul_NumOps[i]
+				mod = objs[o].listOP_BaseMul_Module[i]
+			if Reg == "EAX":
+				addy = objs[o].listOP_BaseMulEAX[i]
+				cnt = objs[o].listOP_BaseMulEAX_CNT[i]
+				num = objs[o].listOP_BaseMulEAX_NumOps[i]
+				mod = objs[o].listOP_BaseMulEAX_Module[i]
+			if Reg == "EBX":
+				addy = objs[o].listOP_BaseMulEBX[i]
+				cnt = objs[o].listOP_BaseMulEBX_CNT[i]
+				num = objs[o].listOP_BaseMulEBX_NumOps[i]
+				mod = objs[o].listOP_BaseMulEBX_Module[i]
+			if Reg == "ECX":
+				addy = objs[o].listOP_BaseMulECX[i]
+				cnt = objs[o].listOP_BaseMulECX_CNT[i]
+				num = objs[o].listOP_BaseMulECX_NumOps[i]
+				mod = objs[o].listOP_BaseMulECX_Module[i]
+			if Reg == "EDX":
+				addy = objs[o].listOP_BaseMulEDX[i]
+				cnt = objs[o].listOP_BaseMulEDX_CNT[i]
+				num = objs[o].listOP_BaseMulEDX_NumOps[i]
+				mod = objs[o].listOP_BaseMulEDX_Module[i]
+			if Reg == "ESI":
+				addy = objs[o].listOP_BaseMulESI[i]
+				cnt = objs[o].listOP_BaseMulESI_CNT[i]
+				num = objs[o].listOP_BaseMulESI_NumOps[i]
+				mod = objs[o].listOP_BaseMulESI_Module[i]
+			if Reg == "EDI":
+				addy = objs[o].listOP_BaseMulEDI[i]
+				cnt = objs[o].listOP_BaseMulEDI_CNT[i]
+				num = objs[o].listOP_BaseMulEDI_NumOps[i]
+				mod = objs[o].listOP_BaseMulEDI_Module[i]
+			if Reg == "EBP":
+				addy = objs[o].listOP_BaseMulEBP[i]
+				cnt = objs[o].listOP_BaseMulEBP_CNT[i]
+				num = objs[o].listOP_BaseMulEBP_NumOps[i]
+				mod = objs[o].listOP_BaseMulEBP_Module[i]
+			if Reg == "ESP":
+				addy = objs[o].listOP_BaseMulESP[i]
+				cnt = objs[o].listOP_BaseMulESP_CNT[i]
+				num = objs[o].listOP_BaseMulESP_NumOps[i]
+				mod = objs[o].listOP_BaseMulESP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num,"jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+	o = 0
+def printlistOP_Div(NumOpsDis, Reg):
+	global printDiv
+	global directory
+	global printStyle
+	operation="Div OP"
+	lock = False
+	global o
+	o=0
+	clearHashChecker()
+	counterReset()
+	i=0
+	for obj in objs:
+		if Reg == "ALL":
+			cnt1 = objs[o].listOP_BaseDiv.__len__()
+		if Reg == "EAX":
+			cnt1 = objs[o].listOP_BaseDivEAX.__len__()
+		if Reg == "EDX":
+			cnt1 = objs[o].listOP_BaseDivEDX.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg == "ALL":
+				addy = objs[o].listOP_BaseDiv[i]
+				cnt = objs[o].listOP_BaseDiv_CNT[i]
+				num = objs[o].listOP_BaseDiv_NumOps[i]
+				mod = objs[o].listOP_BaseDiv_Module[i]
+			if Reg == "EAX":
+				addy = objs[o].listOP_BaseDivEAX[i]
+				cnt = objs[o].listOP_BaseDivEAX_CNT[i]
+				num = objs[o].listOP_BaseDivEAX_NumOps[i]
+				mod = objs[o].listOP_BaseDivEAX_Module[i]
+			if Reg == "EDX":
+				addy = objs[o].listOP_BaseDivEDX[i]
+				cnt = objs[o].listOP_BaseDivEDX_CNT[i]
+				num = objs[o].listOP_BaseDivEDX_NumOps[i]
+				mod = objs[o].listOP_BaseDivEDX_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num,"jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+	o = 0
 
 def printlistOP_MovDeref(NumOpsDis, Reg):
+	global printMovDeref
+	global directory
+	global printStyle
+	operation="Mov Deref OP "
+	lock = False
 	global o
-	idval = 1
+	o=0
+	# print (operation)
 	clearHashChecker()
-	while os.path.exists("%s-MOV_DEREF_OP_%s-%s.txt" % (peName, Reg, idval)):
-	    idval += 1
-	filename = peName +"-MOV_DEREF_OP_" + Reg + "-" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			if Reg == "ALL":
-				cnt1 = objs[o].listOP_BaseMovDeref.__len__()
-
-			if Reg == "EAX":
-				cnt1 = objs[o].listOP_BaseMovDerefEAX.__len__()
-			if Reg == "EBX":
-				cnt1 = objs[o].listOP_BaseMovDerefEBX.__len__()
-			if Reg == "ECX":
-				cnt1 = objs[o].listOP_BaseMovDerefECX.__len__()
-			if Reg == "EDX":
-				cnt1 = objs[o].listOP_BaseMovDerefEDX.__len__()
-			if Reg == "ESI":
-				cnt1 = objs[o].listOP_BaseMovDerefESI.__len__()
-			if Reg == "EDI":
-				cnt1 = objs[o].listOP_BaseMovDerefEDI.__len__()
-			if Reg == "ESP":
-				cnt1 = objs[o].listOP_BaseMovDerefESP.__len__()
-			if Reg == "EBP":
-				cnt1 = objs[o].listOP_BaseMovDerefEBP.__len__()
-			for i in range (cnt1):
-				#print "\n@Mov^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
-				#print >> f, "@Mov*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-
-
-				addy =0
-				cnt = 0   #
-				num = 0
-				if Reg == "ALL":
-					addy = objs[o].listOP_BaseMovDeref[i]
-					cnt = objs[o].listOP_BaseMovDeref_CNT[i]
-					num = objs[o].listOP_BaseMovDeref_NumOps[i]
-					mod = objs[o].listOP_BaseMovDeref_Module[i]
-				if Reg == "EAX":
-					addy = objs[o].listOP_BaseMovDerefEAX[i]
-					cnt = objs[o].listOP_BaseMovDerefEAX_CNT[i]
-					num = objs[o].listOP_BaseMovDerefEAX_NumOps[i]
-					mod = objs[o].listOP_BaseMovDerefEAX_Module[i]
-				if Reg == "EBX":
-					addy = objs[o].listOP_BaseMovDerefEBX[i]
-					cnt = objs[o].listOP_BaseMovDerefEBX_CNT[i]
-					num = objs[o].listOP_BaseMovDerefEBX_NumOps[i]
-					mod = objs[o].listOP_BaseMovDerefEBX_Module[i]
-				if Reg == "ECX":
-					addy = objs[o].listOP_BaseMovDerefECX[i]
-					cnt = objs[o].listOP_BaseMovDerefECX_CNT[i]
-					num = objs[o].listOP_BaseMovDerefECX_NumOps[i]
-					mod = objs[o].listOP_BaseMovDerefECX_Module[i]
-				if Reg == "EDX":
-					addy = objs[o].listOP_BaseMovDerefEDX[i]
-					cnt = objs[o].listOP_BaseMovDerefEDX_CNT[i]
-					num = objs[o].listOP_BaseMovDerefEDX_NumOps[i]
-					mod = objs[o].listOP_BaseMovDerefEDX_Module[i]
-				if Reg == "ESI":
-					addy = objs[o].listOP_BaseMovDerefESI[i]
-					cnt = objs[o].listOP_BaseMovDerefESI_CNT[i]
-					num = objs[o].listOP_BaseMovDerefESI_NumOps[i]
-					mod = objs[o].listOP_BaseMovDerefESI_Module[i]
-				if Reg == "EDI":
-					addy = objs[o].listOP_BaseMovDerefEDI[i]
-					cnt = objs[o].listOP_BaseMovDerefEDI_CNT[i]
-					num = objs[o].listOP_BaseMovDerefEDI_NumOps[i]
-					mod = objs[o].listOP_BaseMovDerefEDI_Module[i]
-				if Reg == "EBP":
-					addy = objs[o].listOP_BaseMovDerefEBP[i]
-					cnt = objs[o].listOP_BaseMovDerefEBP_CNT[i]
-					num = objs[o].listOP_BaseMovDerefEBP_NumOps[i]
-					mod = objs[o].listOP_BaseMovDerefEBP_Module[i]
-				if Reg == "ESP":
-					addy = objs[o].listOP_BaseMovDerefESP[i]
-					cnt = objs[o].listOP_BaseMovDerefESP_CNT[i]
-					num = objs[o].listOP_BaseMovDerefESP_NumOps[i]
-					mod = objs[o].listOP_BaseMovDerefESP_Module[i]
-				
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if cnt1 > 0:
-				#out = "# MOV " + str(Reg) + " " + str(mod) + " total: " + str(cnt1) 
-				temp.append(out)
-			total = total + cnt1	
-			o = o + 1
-			clearGOuts()
-		for out in temp:
-			#print out
-			pass#print >> f, out
-		out = "\nJOP ROCKET"#"# Grand total MOV "  + str(Reg) + " : " + str(total)
-		#print out
-		print >> f, out
-	o = 0
 	counterReset()
-	clearGOuts()
-	nope(filename, total)
-
+	# try:
+	# 	print objs[o].listOP_BaseMovDerefEBX.__len__()
+	# except:
+	# 	print ("gots none")
+	i=0
+	for obj in objs:
+		if Reg == "ALL":
+			cnt1 = objs[o].listOP_BaseMovDeref.__len__()
+		if Reg == "EAX":
+			cnt1 = objs[o].listOP_BaseMovDerefEAX.__len__()
+		if Reg == "EBX":
+			cnt1 = objs[o].listOP_BaseMovDerefEBX.__len__()
+		if Reg == "ECX":
+			cnt1 = objs[o].listOP_BaseMovDerefECX.__len__()
+		if Reg == "EDX":
+			cnt1 = objs[o].listOP_BaseMovDerefEDX.__len__()
+		if Reg == "ESI":
+			cnt1 = objs[o].listOP_BaseMovDerefESI.__len__()
+		if Reg == "EDI":
+			cnt1 = objs[o].listOP_BaseMovDerefEDI.__len__()
+		if Reg == "ESP":
+			cnt1 = objs[o].listOP_BaseMovDerefESP.__len__()
+		if Reg == "EBP":
+			cnt1 = objs[o].listOP_BaseMovDerefEBP.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg == "ALL":
+				addy = objs[o].listOP_BaseMovDeref[i]
+				cnt = objs[o].listOP_BaseMovDeref_CNT[i]
+				num = objs[o].listOP_BaseMovDeref_NumOps[i]
+				mod = objs[o].listOP_BaseMovDeref_Module[i]
+			if Reg == "EAX":
+				addy = objs[o].listOP_BaseMovDerefEAX[i]
+				cnt = objs[o].listOP_BaseMovDerefEAX_CNT[i]
+				num = objs[o].listOP_BaseMovDerefEAX_NumOps[i]
+				mod = objs[o].listOP_BaseMovDerefEAX_Module[i]
+			if Reg == "EBX":
+				addy = objs[o].listOP_BaseMovDerefEBX[i]
+				cnt = objs[o].listOP_BaseMovDerefEBX_CNT[i]
+				num = objs[o].listOP_BaseMovDerefEBX_NumOps[i]
+				mod = objs[o].listOP_BaseMovDerefEBX_Module[i]
+			if Reg == "ECX":
+				addy = objs[o].listOP_BaseMovDerefECX[i]
+				cnt = objs[o].listOP_BaseMovDerefECX_CNT[i]
+				num = objs[o].listOP_BaseMovDerefECX_NumOps[i]
+				mod = objs[o].listOP_BaseMovDerefECX_Module[i]
+			if Reg == "EDX":
+				addy = objs[o].listOP_BaseMovDerefEDX[i]
+				cnt = objs[o].listOP_BaseMovDerefEDX_CNT[i]
+				num = objs[o].listOP_BaseMovDerefEDX_NumOps[i]
+				mod = objs[o].listOP_BaseMovDerefEDX_Module[i]
+			if Reg == "ESI":
+				addy = objs[o].listOP_BaseMovDerefESI[i]
+				cnt = objs[o].listOP_BaseMovDerefESI_CNT[i]
+				num = objs[o].listOP_BaseMovDerefESI_NumOps[i]
+				mod = objs[o].listOP_BaseMovDerefESI_Module[i]
+			if Reg == "EDI":
+				addy = objs[o].listOP_BaseMovDerefEDI[i]
+				cnt = objs[o].listOP_BaseMovDerefEDI_CNT[i]
+				num = objs[o].listOP_BaseMovDerefEDI_NumOps[i]
+				mod = objs[o].listOP_BaseMovDerefEDI_Module[i]
+			if Reg == "EBP":
+				addy = objs[o].listOP_BaseMovDerefEBP[i]
+				cnt = objs[o].listOP_BaseMovDerefEBP_CNT[i]
+				num = objs[o].listOP_BaseMovDerefEBP_NumOps[i]
+				mod = objs[o].listOP_BaseMovDerefEBP_Module[i]
+			if Reg == "ESP":
+				addy = objs[o].listOP_BaseMovDerefESP[i]
+				cnt = objs[o].listOP_BaseMovDerefESP_CNT[i]
+				num = objs[o].listOP_BaseMovDerefESP_NumOps[i]
+				mod = objs[o].listOP_BaseMovDerefESP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num,"jmp")
+			#catfood
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+	o = 0
 def printlistOP_Mov(NumOpsDis, Reg):
+	global printMov
+	global directory
+	global printStyle
+	operation="Mov OP"
+	lock = False
 	global o
-	idval = 1
+	o=0
 	clearHashChecker()
-	while os.path.exists("%s-MOV_OP_%s-%s.txt" % (peName, Reg, idval)):
-	    idval += 1
-	filename = peName +"-MOV_OP_" + Reg + "-" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			if Reg == "ALL":
-				cnt1 = objs[o].listOP_BaseMov.__len__()
-
-			if Reg == "EAX":
-				cnt1 = objs[o].listOP_BaseMovEAX.__len__()
-			if Reg == "EBX":
-				cnt1 = objs[o].listOP_BaseMovEBX.__len__()
-			if Reg == "ECX":
-				cnt1 = objs[o].listOP_BaseMovECX.__len__()
-			if Reg == "EDX":
-				cnt1 = objs[o].listOP_BaseMovEDX.__len__()
-			if Reg == "ESI":
-				cnt1 = objs[o].listOP_BaseMovESI.__len__()
-			if Reg == "EDI":
-				cnt1 = objs[o].listOP_BaseMovEDI.__len__()
-			if Reg == "ESP":
-				cnt1 = objs[o].listOP_BaseMovESP.__len__()
-			if Reg == "EBP":
-				cnt1 = objs[o].listOP_BaseMovEBP.__len__()
-			for i in range (cnt1):
-				#print "\n@Mov^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
-				#print >> f, "@Mov*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-
-
-				addy =0
-				cnt = 0   #
-				num = 0
-				if Reg == "ALL":
-					addy = objs[o].listOP_BaseMov[i]
-					cnt = objs[o].listOP_BaseMov_CNT[i]
-					num = objs[o].listOP_BaseMov_NumOps[i]
-					mod = objs[o].listOP_BaseMov_Module[i]
-				if Reg == "EAX":
-					addy = objs[o].listOP_BaseMovEAX[i]
-					cnt = objs[o].listOP_BaseMovEAX_CNT[i]
-					num = objs[o].listOP_BaseMovEAX_NumOps[i]
-					mod = objs[o].listOP_BaseMovEAX_Module[i]
-				if Reg == "EBX":
-					addy = objs[o].listOP_BaseMovEBX[i]
-					cnt = objs[o].listOP_BaseMovEBX_CNT[i]
-					num = objs[o].listOP_BaseMovEBX_NumOps[i]
-					mod = objs[o].listOP_BaseMovEBX_Module[i]
-				if Reg == "ECX":
-					addy = objs[o].listOP_BaseMovECX[i]
-					cnt = objs[o].listOP_BaseMovECX_CNT[i]
-					num = objs[o].listOP_BaseMovECX_NumOps[i]
-					mod = objs[o].listOP_BaseMovECX_Module[i]
-				if Reg == "EDX":
-					addy = objs[o].listOP_BaseMovEDX[i]
-					cnt = objs[o].listOP_BaseMovEDX_CNT[i]
-					num = objs[o].listOP_BaseMovEDX_NumOps[i]
-					mod = objs[o].listOP_BaseMovEDX_Module[i]
-				if Reg == "ESI":
-					addy = objs[o].listOP_BaseMovESI[i]
-					cnt = objs[o].listOP_BaseMovESI_CNT[i]
-					num = objs[o].listOP_BaseMovESI_NumOps[i]
-					mod = objs[o].listOP_BaseMovESI_Module[i]
-				if Reg == "EDI":
-					addy = objs[o].listOP_BaseMovEDI[i]
-					cnt = objs[o].listOP_BaseMovEDI_CNT[i]
-					num = objs[o].listOP_BaseMovEDI_NumOps[i]
-					mod = objs[o].listOP_BaseMovEDI_Module[i]
-				if Reg == "EBP":
-					addy = objs[o].listOP_BaseMovEBP[i]
-					cnt = objs[o].listOP_BaseMovEBP_CNT[i]
-					num = objs[o].listOP_BaseMovEBP_NumOps[i]
-					# print "infos"
-					sp()
-					# print addy
-					# print cnt
-					# print num
-					# print len(objs[o].listOP_BaseMovEBP_Module)
-					mod = objs[o].listOP_BaseMovEBP_Module[i]
-				if Reg == "ESP":
-					addy = objs[o].listOP_BaseMovESP[i]
-					cnt = objs[o].listOP_BaseMovESP_CNT[i]
-					num = objs[o].listOP_BaseMovESP_NumOps[i]
-					mod = objs[o].listOP_BaseMovESP_Module[i]
-				
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if cnt1 > 0:
-				#out = "# MOV " + str(Reg) + " " + str(mod) + " total: " + str(cnt1) 
-				temp.append(out)
-			total = total + cnt1	
-			o = o + 1
-			clearGOuts()
-		for out in temp:
-			#print out
-			pass#print >> f, out
-		out = "\nJOP ROCKET"#"# Grand total MOV "  + str(Reg) + " : " + str(total)
-		#print out
-		print >> f, out
-	o = 0
 	counterReset()
-	clearGOuts()
-	nope(filename, total)
+	i=0
+	for obj in objs:
+		if Reg == "ALL":
+			cnt1 = objs[o].listOP_BaseMov.__len__()
+		if Reg == "EAX":
+			cnt1 = objs[o].listOP_BaseMovEAX.__len__()
+		if Reg == "EBX":
+			cnt1 = objs[o].listOP_BaseMovEBX.__len__()
+		if Reg == "ECX":
+			cnt1 = objs[o].listOP_BaseMovECX.__len__()
+		if Reg == "EDX":
+			cnt1 = objs[o].listOP_BaseMovEDX.__len__()
+		if Reg == "ESI":
+			cnt1 = objs[o].listOP_BaseMovESI.__len__()
+		if Reg == "EDI":
+			cnt1 = objs[o].listOP_BaseMovEDI.__len__()
+		if Reg == "ESP":
+			cnt1 = objs[o].listOP_BaseMovESP.__len__()
+		if Reg == "EBP":
+			cnt1 = objs[o].listOP_BaseMovEBP.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg == "ALL":
+				addy = objs[o].listOP_BaseMov[i]
+				cnt = objs[o].listOP_BaseMov_CNT[i]
+				num = objs[o].listOP_BaseMov_NumOps[i]
+				mod = objs[o].listOP_BaseMov_Module[i]
+			if Reg == "EAX":
+				addy = objs[o].listOP_BaseMovEAX[i]
+				cnt = objs[o].listOP_BaseMovEAX_CNT[i]
+				num = objs[o].listOP_BaseMovEAX_NumOps[i]
+				mod = objs[o].listOP_BaseMovEAX_Module[i]
+			if Reg == "EBX":
+				addy = objs[o].listOP_BaseMovEBX[i]
+				cnt = objs[o].listOP_BaseMovEBX_CNT[i]
+				num = objs[o].listOP_BaseMovEBX_NumOps[i]
+				mod = objs[o].listOP_BaseMovEBX_Module[i]
+			if Reg == "ECX":
+				addy = objs[o].listOP_BaseMovECX[i]
+				cnt = objs[o].listOP_BaseMovECX_CNT[i]
+				num = objs[o].listOP_BaseMovECX_NumOps[i]
+				mod = objs[o].listOP_BaseMovECX_Module[i]
+			if Reg == "EDX":
+				addy = objs[o].listOP_BaseMovEDX[i]
+				cnt = objs[o].listOP_BaseMovEDX_CNT[i]
+				num = objs[o].listOP_BaseMovEDX_NumOps[i]
+				mod = objs[o].listOP_BaseMovEDX_Module[i]
+			if Reg == "ESI":
+				addy = objs[o].listOP_BaseMovESI[i]
+				cnt = objs[o].listOP_BaseMovESI_CNT[i]
+				num = objs[o].listOP_BaseMovESI_NumOps[i]
+				mod = objs[o].listOP_BaseMovESI_Module[i]
+			if Reg == "EDI":
+				addy = objs[o].listOP_BaseMovEDI[i]
+				cnt = objs[o].listOP_BaseMovEDI_CNT[i]
+				num = objs[o].listOP_BaseMovEDI_NumOps[i]
+				mod = objs[o].listOP_BaseMovEDI_Module[i]
+			if Reg == "EBP":
+				addy = objs[o].listOP_BaseMovEBP[i]
+				cnt = objs[o].listOP_BaseMovEBP_CNT[i]
+				num = objs[o].listOP_BaseMovEBP_NumOps[i]
+				mod = objs[o].listOP_BaseMovEBP_Module[i]
+			if Reg == "ESP":
+				addy = objs[o].listOP_BaseMovESP[i]
+				cnt = objs[o].listOP_BaseMovESP_CNT[i]
+				num = objs[o].listOP_BaseMovESP_NumOps[i]
+				mod = objs[o].listOP_BaseMovESP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num,"jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+	o = 0
 
 def printlistOP_MovShuf(NumOpsDis, Reg):
+	global printMovShuf
+	global directory
+	global printStyle
+	operation="MovShuf OP"
+	lock = False
 	global o
-	idval = 1
+	o=0
 	clearHashChecker()
-	while os.path.exists("%s-MOV_Shuf_OP_%s-%s.txt" % (peName, Reg, idval)):
-	    idval += 1
-	filename = peName +"-MOV_SHUF_OP_" + Reg + "-" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			if Reg == "ALL":
-				cnt1 = objs[o].listOP_BaseMovShuf.__len__()
-
-			if Reg == "EAX":
-				cnt1 = objs[o].listOP_BaseMovShufEAX.__len__()
-			if Reg == "EBX":
-				cnt1 = objs[o].listOP_BaseMovShufEBX.__len__()
-			if Reg == "ECX":
-				cnt1 = objs[o].listOP_BaseMovShufECX.__len__()
-			if Reg == "EDX":
-				cnt1 = objs[o].listOP_BaseMovShufEDX.__len__()
-			if Reg == "ESI":
-				cnt1 = objs[o].listOP_BaseMovShufESI.__len__()
-			if Reg == "EDI":
-				cnt1 = objs[o].listOP_BaseMovShufEDI.__len__()
-			if Reg == "ESP":
-				cnt1 = objs[o].listOP_BaseMovShufESP.__len__()
-			if Reg == "EBP":
-				cnt1 = objs[o].listOP_BaseMovShufEBP.__len__()
-			for i in range (cnt1):
-				#print "\n@MOV_SHUF^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
-				#print >> f, "@MOV_SHUF*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-
-
-				addy =0
-				cnt = 0   #
-				num = 0
-				if Reg == "ALL":
-					addy = objs[o].listOP_BaseMovShuf[i]
-					cnt = objs[o].listOP_BaseMovShuf_CNT[i]
-					num = objs[o].listOP_BaseMovShuf_NumOps[i]
-					mod = objs[o].listOP_BaseMovShuf_Module[i]
-				if Reg == "EAX":
-					addy = objs[o].listOP_BaseMovShufEAX[i]
-					cnt = objs[o].listOP_BaseMovShufEAX_CNT[i]
-					num = objs[o].listOP_BaseMovShufEAX_NumOps[i]
-					mod = objs[o].listOP_BaseMovShufEAX_Module[i]
-				if Reg == "EBX":
-					addy = objs[o].listOP_BaseMovShufEBX[i]
-					cnt = objs[o].listOP_BaseMovShufEBX_CNT[i]
-					num = objs[o].listOP_BaseMovShufEBX_NumOps[i]
-					mod = objs[o].listOP_BaseMovShufEBX_Module[i]
-				if Reg == "ECX":
-					addy = objs[o].listOP_BaseMovShufECX[i]
-					cnt = objs[o].listOP_BaseMovShufECX_CNT[i]
-					num = objs[o].listOP_BaseMovShufECX_NumOps[i]
-					mod = objs[o].listOP_BaseMovShufECX_Module[i]
-				if Reg == "EDX":
-					addy = objs[o].listOP_BaseMovShufEDX[i]
-					cnt = objs[o].listOP_BaseMovShufEDX_CNT[i]
-					num = objs[o].listOP_BaseMovShufEDX_NumOps[i]
-					mod = objs[o].listOP_BaseMovShufEDX_Module[i]
-				if Reg == "ESI":
-					addy = objs[o].listOP_BaseMovShufESI[i]
-					cnt = objs[o].listOP_BaseMovShufESI_CNT[i]
-					num = objs[o].listOP_BaseMovShufESI_NumOps[i]
-					mod = objs[o].listOP_BaseMovShufESI_Module[i]
-				if Reg == "EDI":
-					addy = objs[o].listOP_BaseMovShufEDI[i]
-					cnt = objs[o].listOP_BaseMovShufEDI_CNT[i]
-					num = objs[o].listOP_BaseMovShufEDI_NumOps[i]
-					mod = objs[o].listOP_BaseMovShufEDI_Module[i]
-				if Reg == "EBP":
-					addy = objs[o].listOP_BaseMovShufEBP[i]
-					cnt = objs[o].listOP_BaseMovShufEBP_CNT[i]
-					num = objs[o].listOP_BaseMovShufEBP_NumOps[i]
-					mod = objs[o].listOP_BaseMovShufEBP_Module[i]
-				if Reg == "ESP":
-					addy = objs[o].listOP_BaseMovShufESP[i]
-					cnt = objs[o].listOP_BaseMovShufESP_CNT[i]
-					num = objs[o].listOP_BaseMovShufESP_NumOps[i]
-					mod = objs[o].listOP_BaseMovShufESP_Module[i]
-				
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if cnt1 > 0:
-				#out = "# MOV Shuffle " + str(Reg) + " " + str(mod) + " total: " + str(cnt1) 
-				temp.append(out)
-			total = total + cnt1	
-			o = o + 1
-			clearGOuts()
-		for out in temp:
-			#print out
-			pass#print >> f, out
-		out = "\n JOP ROCKET"#"# Grand total MOV Shuffle "  + str(Reg) + " : " + str(total)
-		#print out
-		print >> f, out
-	o = 0
 	counterReset()
-	clearGOuts()
-	nope(filename, total)
+	i=0
+	for obj in objs:
+		if Reg == "ALL":
+			cnt1 = objs[o].listOP_BaseMovShuf.__len__()
+		if Reg == "EAX":
+			cnt1 = objs[o].listOP_BaseMovShufEAX.__len__()
+		if Reg == "EBX":
+			cnt1 = objs[o].listOP_BaseMovShufEBX.__len__()
+		if Reg == "ECX":
+			cnt1 = objs[o].listOP_BaseMovShufECX.__len__()
+		if Reg == "EDX":
+			cnt1 = objs[o].listOP_BaseMovShufEDX.__len__()
+		if Reg == "ESI":
+			cnt1 = objs[o].listOP_BaseMovShufESI.__len__()
+		if Reg == "EDI":
+			cnt1 = objs[o].listOP_BaseMovShufEDI.__len__()
+		if Reg == "ESP":
+			cnt1 = objs[o].listOP_BaseMovShufESP.__len__()
+		if Reg == "EBP":
+			cnt1 = objs[o].listOP_BaseMovShufEBP.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg == "ALL":
+				addy = objs[o].listOP_BaseMovShuf[i]
+				cnt = objs[o].listOP_BaseMovShuf_CNT[i]
+				num = objs[o].listOP_BaseMovShuf_NumOps[i]
+				mod = objs[o].listOP_BaseMovShuf_Module[i]
+			if Reg == "EAX":
+				addy = objs[o].listOP_BaseMovShufEAX[i]
+				cnt = objs[o].listOP_BaseMovShufEAX_CNT[i]
+				num = objs[o].listOP_BaseMovShufEAX_NumOps[i]
+				mod = objs[o].listOP_BaseMovShufEAX_Module[i]
+			if Reg == "EBX":
+				addy = objs[o].listOP_BaseMovShufEBX[i]
+				cnt = objs[o].listOP_BaseMovShufEBX_CNT[i]
+				num = objs[o].listOP_BaseMovShufEBX_NumOps[i]
+				mod = objs[o].listOP_BaseMovShufEBX_Module[i]
+			if Reg == "ECX":
+				addy = objs[o].listOP_BaseMovShufECX[i]
+				cnt = objs[o].listOP_BaseMovShufECX_CNT[i]
+				num = objs[o].listOP_BaseMovShufECX_NumOps[i]
+				mod = objs[o].listOP_BaseMovShufECX_Module[i]
+			if Reg == "EDX":
+				addy = objs[o].listOP_BaseMovShufEDX[i]
+				cnt = objs[o].listOP_BaseMovShufEDX_CNT[i]
+				num = objs[o].listOP_BaseMovShufEDX_NumOps[i]
+				mod = objs[o].listOP_BaseMovShufEDX_Module[i]
+			if Reg == "ESI":
+				addy = objs[o].listOP_BaseMovShufESI[i]
+				cnt = objs[o].listOP_BaseMovShufESI_CNT[i]
+				num = objs[o].listOP_BaseMovShufESI_NumOps[i]
+				mod = objs[o].listOP_BaseMovShufESI_Module[i]
+			if Reg == "EDI":
+				addy = objs[o].listOP_BaseMovShufEDI[i]
+				cnt = objs[o].listOP_BaseMovShufEDI_CNT[i]
+				num = objs[o].listOP_BaseMovShufEDI_NumOps[i]
+				mod = objs[o].listOP_BaseMovShufEDI_Module[i]
+			if Reg == "EBP":
+				addy = objs[o].listOP_BaseMovShufEBP[i]
+				cnt = objs[o].listOP_BaseMovShufEBP_CNT[i]
+				num = objs[o].listOP_BaseMovShufEBP_NumOps[i]
+				mod = objs[o].listOP_BaseMovShufEBP_Module[i]
+			if Reg == "ESP":
+				addy = objs[o].listOP_BaseMovShufESP[i]
+				cnt = objs[o].listOP_BaseMovShufESP_CNT[i]
+				num = objs[o].listOP_BaseMovShufESP_NumOps[i]
+				mod = objs[o].listOP_BaseMovShufESP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num,"jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+	o = 0
 
-# print mov values into registers
 def printlistOP_MovVal(NumOpsDis, Reg):
+	global printMovVal
+	global directory
+	global printStyle
+	operation="MovVal OP"
+	lock = False
 	global o
-	idval = 1
+	o=0
 	clearHashChecker()
-	while os.path.exists("%s-MOV_VAL_OP_%s-%s.txt" % (peName, Reg, idval)):
-	    idval += 1
-	filename = peName +"-MOV_VAL_OP_" + Reg + "-" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		temp = []
-		total = 0
-		for obj in objs:
-			if Reg == "ALL":
-				cnt1 = objs[o].listOP_BaseMovVal.__len__()
-
-			if Reg == "EAX":
-				cnt1 = objs[o].listOP_BaseMovValEAX.__len__()
-			if Reg == "EBX":
-				cnt1 = objs[o].listOP_BaseMovValEBX.__len__()
-			if Reg == "ECX":
-				cnt1 = objs[o].listOP_BaseMovValECX.__len__()
-			if Reg == "EDX":
-				cnt1 = objs[o].listOP_BaseMovValEDX.__len__()
-			if Reg == "ESI":
-				cnt1 = objs[o].listOP_BaseMovValESI.__len__()
-			if Reg == "EDI":
-				cnt1 = objs[o].listOP_BaseMovValEDI.__len__()
-			if Reg == "ESP":
-				cnt1 = objs[o].listOP_BaseMovValESP.__len__()
-			if Reg == "EBP":
-				cnt1 = objs[o].listOP_BaseMovValEBP.__len__()
-			# print "printing count " + Reg + " " + str(cnt1)
-
-			for i in range (cnt1):
-				#print "\n@MOV Val^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
-				#print >> f, "@MOV Val*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-
-				addy =0
-				cnt = 0   #
-				num = 0
-				if Reg == "ALL":
-					addy = objs[o].listOP_BaseMovVal[i]
-					cnt = objs[o].listOP_BaseMovVal_CNT[i]
-					num = objs[o].listOP_BaseMovVal_NumOps[i]
-					mod = objs[o].listOP_BaseMovVal_Module[i]
-				if Reg == "EAX":
-					addy = objs[o].listOP_BaseMovValEAX[i]
-					cnt = objs[o].listOP_BaseMovValEAX_CNT[i]
-					num = objs[o].listOP_BaseMovValEAX_NumOps[i]
-					mod = objs[o].listOP_BaseMovValEAX_Module[i]
-				if Reg == "EBX":
-					addy = objs[o].listOP_BaseMovValEBX[i]
-					cnt = objs[o].listOP_BaseMovValEBX_CNT[i]
-					num = objs[o].listOP_BaseMovValEBX_NumOps[i]
-					mod = objs[o].listOP_BaseMovValEBX_Module[i]
-				if Reg == "ECX":
-					addy = objs[o].listOP_BaseMovValECX[i]
-					cnt = objs[o].listOP_BaseMovValECX_CNT[i]
-					num = objs[o].listOP_BaseMovValECX_NumOps[i]
-					mod = objs[o].listOP_BaseMovValECX_Module[i]
-				if Reg == "EDX":
-					addy = objs[o].listOP_BaseMovValEDX[i]
-					cnt = objs[o].listOP_BaseMovValEDX_CNT[i]
-					num = objs[o].listOP_BaseMovValEDX_NumOps[i]
-					mod = objs[o].listOP_BaseMovValEDX_Module[i]
-				if Reg == "ESI":
-					addy = objs[o].listOP_BaseMovValESI[i]
-					cnt = objs[o].listOP_BaseMovValESI_CNT[i]
-					num = objs[o].listOP_BaseMovValESI_NumOps[i]
-					mod = objs[o].listOP_BaseMovValESI_Module[i]
-				if Reg == "EDI":
-					addy = objs[o].listOP_BaseMovValEDI[i]
-					cnt = objs[o].listOP_BaseMovValEDI_CNT[i]
-					num = objs[o].listOP_BaseMovValEDI_NumOps[i]
-					mod = objs[o].listOP_BaseMovValEDI_Module[i]
-				if Reg == "EBP":
-					addy = objs[o].listOP_BaseMovValEBP[i]
-					cnt = objs[o].listOP_BaseMovValEBP_CNT[i]
-					num = objs[o].listOP_BaseMovValEBP_NumOps[i]
-					mod = objs[o].listOP_BaseMovValEBP_Module[i]
-				if Reg == "ESP":
-					addy = objs[o].listOP_BaseMovValESP[i]
-					cnt = objs[o].listOP_BaseMovValESP_CNT[i]
-					num = objs[o].listOP_BaseMovValESP_NumOps[i]
-					mod = objs[o].listOP_BaseMovValESP_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, num, "jmp")
-
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if cnt1 > 0:
-				#out = "# MOV Value " + str(Reg) + " " + str(mod) + " total: " + str(cnt1) 
-				temp.append(out)
-			total = total + cnt1	
-			o = o + 1
-			clearGOuts()
-		for out in temp:
-			#print out
-			pass#print >> f, out
-		out = "\nJOP ROCKET"#"# Grand total MOV Value "  + str(Reg) + " : " + str(total)
-		#print out
-		print >> f, out
-	o = 0
 	counterReset()
-	clearGOuts()
-	nope(filename, total)
+	i=0
+	for obj in objs:
+		if Reg == "ALL":
+			cnt1 = objs[o].listOP_BaseMovVal.__len__()
+		if Reg == "EAX":
+			cnt1 = objs[o].listOP_BaseMovValEAX.__len__()
+		if Reg == "EBX":
+			cnt1 = objs[o].listOP_BaseMovValEBX.__len__()
+		if Reg == "ECX":
+			cnt1 = objs[o].listOP_BaseMovValECX.__len__()
+		if Reg == "EDX":
+			cnt1 = objs[o].listOP_BaseMovValEDX.__len__()
+		if Reg == "ESI":
+			cnt1 = objs[o].listOP_BaseMovValESI.__len__()
+		if Reg == "EDI":
+			cnt1 = objs[o].listOP_BaseMovValEDI.__len__()
+		if Reg == "ESP":
+			cnt1 = objs[o].listOP_BaseMovValESP.__len__()
+		if Reg == "EBP":
+			cnt1 = objs[o].listOP_BaseMovValEBP.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg == "ALL":
+				addy = objs[o].listOP_BaseMovVal[i]
+				cnt = objs[o].listOP_BaseMovVal_CNT[i]
+				num = objs[o].listOP_BaseMovVal_NumOps[i]
+				mod = objs[o].listOP_BaseMovVal_Module[i]
+			if Reg == "EAX":
+				addy = objs[o].listOP_BaseMovValEAX[i]
+				cnt = objs[o].listOP_BaseMovValEAX_CNT[i]
+				num = objs[o].listOP_BaseMovValEAX_NumOps[i]
+				mod = objs[o].listOP_BaseMovValEAX_Module[i]
+			if Reg == "EBX":
+				addy = objs[o].listOP_BaseMovValEBX[i]
+				cnt = objs[o].listOP_BaseMovValEBX_CNT[i]
+				num = objs[o].listOP_BaseMovValEBX_NumOps[i]
+				mod = objs[o].listOP_BaseMovValEBX_Module[i]
+			if Reg == "ECX":
+				addy = objs[o].listOP_BaseMovValECX[i]
+				cnt = objs[o].listOP_BaseMovValECX_CNT[i]
+				num = objs[o].listOP_BaseMovValECX_NumOps[i]
+				mod = objs[o].listOP_BaseMovValECX_Module[i]
+			if Reg == "EDX":
+				addy = objs[o].listOP_BaseMovValEDX[i]
+				cnt = objs[o].listOP_BaseMovValEDX_CNT[i]
+				num = objs[o].listOP_BaseMovValEDX_NumOps[i]
+				mod = objs[o].listOP_BaseMovValEDX_Module[i]
+			if Reg == "ESI":
+				addy = objs[o].listOP_BaseMovValESI[i]
+				cnt = objs[o].listOP_BaseMovValESI_CNT[i]
+				num = objs[o].listOP_BaseMovValESI_NumOps[i]
+				mod = objs[o].listOP_BaseMovValESI_Module[i]
+			if Reg == "EDI":
+				addy = objs[o].listOP_BaseMovValEDI[i]
+				cnt = objs[o].listOP_BaseMovValEDI_CNT[i]
+				num = objs[o].listOP_BaseMovValEDI_NumOps[i]
+				mod = objs[o].listOP_BaseMovValEDI_Module[i]
+			if Reg == "EBP":
+				addy = objs[o].listOP_BaseMovValEBP[i]
+				cnt = objs[o].listOP_BaseMovValEBP_CNT[i]
+				num = objs[o].listOP_BaseMovValEBP_NumOps[i]
+				mod = objs[o].listOP_BaseMovValEBP_Module[i]
+			if Reg == "ESP":
+				addy = objs[o].listOP_BaseMovValESP[i]
+				cnt = objs[o].listOP_BaseMovValESP_CNT[i]
+				num = objs[o].listOP_BaseMovValESP_NumOps[i]
+				mod = objs[o].listOP_BaseMovValESP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num,"jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+	o = 0
 
 def printlistOP_Lea(NumOpsDis, Reg):
+	global printLea
+	global directory
+	global printStyle
+	operation="Lea OP"
+	lock = False
 	global o
-	idval = 1
+	o=0
 	clearHashChecker()
-	while os.path.exists("%s-LEA_OP_%s-%s.txt" % (peName, Reg, idval)):
-	    idval += 1
-	filename = peName +"-LEA_OP_" + Reg + "-" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			if Reg == "ALL":
-				cnt1 = objs[o].listOP_BaseLea.__len__()
-
-			if Reg == "EAX":
-				cnt1 = objs[o].listOP_BaseLeaEAX.__len__()
-			if Reg == "EBX":
-				cnt1 = objs[o].listOP_BaseLeaEBX.__len__()
-			if Reg == "ECX":
-				cnt1 = objs[o].listOP_BaseLeaECX.__len__()
-			if Reg == "EDX":
-				cnt1 = objs[o].listOP_BaseLeaEDX.__len__()
-			if Reg == "ESI":
-				cnt1 = objs[o].listOP_BaseLeaESI.__len__()
-			if Reg == "EDI":
-				cnt1 = objs[o].listOP_BaseLeaEDI.__len__()
-			if Reg == "ESP":
-				cnt1 = objs[o].listOP_BaseLeaESP.__len__()
-			if Reg == "EBP":
-				cnt1 = objs[o].listOP_BaseLeaEBP.__len__()
-			for i in range (cnt1):
-				#print "\n@Lea^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
-				#print >> f, "@Lea*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-
-
-				addy =0
-				cnt = 0   #
-				num = 0
-				if Reg == "ALL":
-					addy = objs[o].listOP_BaseLea[i]
-					cnt = objs[o].listOP_BaseLea_CNT[i]
-					num = objs[o].listOP_BaseLea_NumOps[i]
-					mod = objs[o].listOP_BaseLea_Module[i]
-				if Reg == "EAX":
-					addy = objs[o].listOP_BaseLeaEAX[i]
-					cnt = objs[o].listOP_BaseLeaEAX_CNT[i]
-					num = objs[o].listOP_BaseLeaEAX_NumOps[i]
-					mod = objs[o].listOP_BaseLeaEAX_Module[i]
-				if Reg == "EBX":
-					addy = objs[o].listOP_BaseLeaEBX[i]
-					cnt = objs[o].listOP_BaseLeaEBX_CNT[i]
-					num = objs[o].listOP_BaseLeaEBX_NumOps[i]
-					mod = objs[o].listOP_BaseLeaEBX_Module[i]
-				if Reg == "ECX":
-					addy = objs[o].listOP_BaseLeaECX[i]
-					cnt = objs[o].listOP_BaseLeaECX_CNT[i]
-					num = objs[o].listOP_BaseLeaECX_NumOps[i]
-					mod = objs[o].listOP_BaseLeaECX_Module[i]
-				if Reg == "EDX":
-					addy = objs[o].listOP_BaseLeaEDX[i]
-					cnt = objs[o].listOP_BaseLeaEDX_CNT[i]
-					num = objs[o].listOP_BaseLeaEDX_NumOps[i]
-					mod = objs[o].listOP_BaseLeaEDX_Module[i]
-				if Reg == "ESI":
-					addy = objs[o].listOP_BaseLeaESI[i]
-					cnt = objs[o].listOP_BaseLeaESI_CNT[i]
-					num = objs[o].listOP_BaseLeaESI_NumOps[i]
-					mod = objs[o].listOP_BaseLeaESI_Module[i]
-				if Reg == "EDI":
-					addy = objs[o].listOP_BaseLeaEDI[i]
-					cnt = objs[o].listOP_BaseLeaEDI_CNT[i]
-					num = objs[o].listOP_BaseLeaEDI_NumOps[i]
-					mod = objs[o].listOP_BaseLeaEDI_Module[i]
-				if Reg == "EBP":
-					addy = objs[o].listOP_BaseLeaEBP[i]
-					cnt = objs[o].listOP_BaseLeaEBP_CNT[i]
-					num = objs[o].listOP_BaseLeaEBP_NumOps[i]
-					mod = objs[o].listOP_BaseLeaEBP_Module[i]
-				if Reg == "ESP":
-					addy = objs[o].listOP_BaseLeaESP[i]
-					cnt = objs[o].listOP_BaseLeaESP_CNT[i]
-					num = objs[o].listOP_BaseLeaESP_NumOps[i]
-					mod = objs[o].listOP_BaseLeaESP_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if cnt1 > 0:
-				#out = "# LEA " + str(Reg) + " " + str(mod) + " total: " + str(cnt1) 
-				temp.append(out)
-			total = total + cnt1	
-			o = o + 1
-			clearGOuts()
-		for out in temp:
-			#print out
-			pass#print >> f, out
-		out = "JOP ROCKET"#"# Grand total LEA "  + str(Reg) + " : " + str(total)
-		#print out
-		print >> f, out
-	o = 0
 	counterReset()
-	clearGOuts()
-	nope(filename, total)
-
+	i=0
+	for obj in objs:
+		if Reg == "ALL":
+			cnt1 = objs[o].listOP_BaseLea.__len__()
+		if Reg == "EAX":
+			cnt1 = objs[o].listOP_BaseLeaEAX.__len__()
+		if Reg == "EBX":
+			cnt1 = objs[o].listOP_BaseLeaEBX.__len__()
+		if Reg == "ECX":
+			cnt1 = objs[o].listOP_BaseLeaECX.__len__()
+		if Reg == "EDX":
+			cnt1 = objs[o].listOP_BaseLeaEDX.__len__()
+		if Reg == "ESI":
+			cnt1 = objs[o].listOP_BaseLeaESI.__len__()
+		if Reg == "EDI":
+			cnt1 = objs[o].listOP_BaseLeaEDI.__len__()
+		if Reg == "ESP":
+			cnt1 = objs[o].listOP_BaseLeaESP.__len__()
+		if Reg == "EBP":
+			cnt1 = objs[o].listOP_BaseLeaEBP.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg == "ALL":
+				addy = objs[o].listOP_BaseLea[i]
+				cnt = objs[o].listOP_BaseLea_CNT[i]
+				num = objs[o].listOP_BaseLea_NumOps[i]
+				mod = objs[o].listOP_BaseLea_Module[i]
+			if Reg == "EAX":
+				addy = objs[o].listOP_BaseLeaEAX[i]
+				cnt = objs[o].listOP_BaseLeaEAX_CNT[i]
+				num = objs[o].listOP_BaseLeaEAX_NumOps[i]
+				mod = objs[o].listOP_BaseLeaEAX_Module[i]
+			if Reg == "EBX":
+				addy = objs[o].listOP_BaseLeaEBX[i]
+				cnt = objs[o].listOP_BaseLeaEBX_CNT[i]
+				num = objs[o].listOP_BaseLeaEBX_NumOps[i]
+				mod = objs[o].listOP_BaseLeaEBX_Module[i]
+			if Reg == "ECX":
+				addy = objs[o].listOP_BaseLeaECX[i]
+				cnt = objs[o].listOP_BaseLeaECX_CNT[i]
+				num = objs[o].listOP_BaseLeaECX_NumOps[i]
+				mod = objs[o].listOP_BaseLeaECX_Module[i]
+			if Reg == "EDX":
+				addy = objs[o].listOP_BaseLeaEDX[i]
+				cnt = objs[o].listOP_BaseLeaEDX_CNT[i]
+				num = objs[o].listOP_BaseLeaEDX_NumOps[i]
+				mod = objs[o].listOP_BaseLeaEDX_Module[i]
+			if Reg == "ESI":
+				addy = objs[o].listOP_BaseLeaESI[i]
+				cnt = objs[o].listOP_BaseLeaESI_CNT[i]
+				num = objs[o].listOP_BaseLeaESI_NumOps[i]
+				mod = objs[o].listOP_BaseLeaESI_Module[i]
+			if Reg == "EDI":
+				addy = objs[o].listOP_BaseLeaEDI[i]
+				cnt = objs[o].listOP_BaseLeaEDI_CNT[i]
+				num = objs[o].listOP_BaseLeaEDI_NumOps[i]
+				mod = objs[o].listOP_BaseLeaEDI_Module[i]
+			if Reg == "EBP":
+				addy = objs[o].listOP_BaseLeaEBP[i]
+				cnt = objs[o].listOP_BaseLeaEBP_CNT[i]
+				num = objs[o].listOP_BaseLeaEBP_NumOps[i]
+				mod = objs[o].listOP_BaseLeaEBP_Module[i]
+			if Reg == "ESP":
+				addy = objs[o].listOP_BaseLeaESP[i]
+				cnt = objs[o].listOP_BaseLeaESP_CNT[i]
+				num = objs[o].listOP_BaseLeaESP_NumOps[i]
+				mod = objs[o].listOP_BaseLeaESP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num,"jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+	o = 0
 def printlistOP_Push(NumOpsDis, Reg):
+	global printPush
+	global directory
+	global printStyle
+	operation="Push OP"
+	lock = False
 	global o
-	idval = 1
+	o=0
 	clearHashChecker()
-	while os.path.exists("%s-PUSH_OP_%s-%s.txt" % (peName, Reg, idval)):
-	    idval += 1
-	filename = peName +"-PUSH_OP_" + Reg + "-" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			if Reg == "ALL":
-				cnt1 = objs[o].listOP_BasePush.__len__()
-
-			if Reg == "EAX":
-				cnt1 = objs[o].listOP_BasePushEAX.__len__()
-			if Reg == "EBX":
-				cnt1 = objs[o].listOP_BasePushEBX.__len__()
-			if Reg == "ECX":
-				cnt1 = objs[o].listOP_BasePushECX.__len__()
-			if Reg == "EDX":
-				cnt1 = objs[o].listOP_BasePushEDX.__len__()
-			if Reg == "ESI":
-				cnt1 = objs[o].listOP_BasePushESI.__len__()
-			if Reg == "EDI":
-				cnt1 = objs[o].listOP_BasePushEDI.__len__()
-			if Reg == "ESP":
-				cnt1 = objs[o].listOP_BasePushESP.__len__()
-			if Reg == "EBP":
-				cnt1 = objs[o].listOP_BasePushEBP.__len__()
-			for i in range (cnt1):
-				#print "\n@PUSH: ^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
-				#print >> f, "@PUSH: ^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-
-
-				addy =0
-				cnt = 0   #
-				num = 0
-				if Reg == "ALL":
-					addy = objs[o].listOP_BasePush[i]
-					cnt = objs[o].listOP_BasePush_CNT[i]
-					num = objs[o].listOP_BasePush_NumOps[i]
-					mod = objs[o].listOP_BasePush_Module[i]
-				if Reg == "EAX":
-					addy = objs[o].listOP_BasePushEAX[i]
-					cnt = objs[o].listOP_BasePushEAX_CNT[i]
-					num = objs[o].listOP_BasePushEAX_NumOps[i]
-					mod = objs[o].listOP_BasePushEAX_Module[i]
-				if Reg == "EBX":
-					addy = objs[o].listOP_BasePushEBX[i]
-					cnt = objs[o].listOP_BasePushEBX_CNT[i]
-					num = objs[o].listOP_BasePushEBX_NumOps[i]
-					mod = objs[o].listOP_BasePushEBX_Module[i]
-				if Reg == "ECX":
-					addy = objs[o].listOP_BasePushECX[i]
-					cnt = objs[o].listOP_BasePushECX_CNT[i]
-					num = objs[o].listOP_BasePushECX_NumOps[i]
-					mod = objs[o].listOP_BasePushECX_Module[i]
-				if Reg == "EDX":
-					addy = objs[o].listOP_BasePushEDX[i]
-					cnt = objs[o].listOP_BasePushEDX_CNT[i]
-					num = objs[o].listOP_BasePushEDX_NumOps[i]
-					mod = objs[o].listOP_BasePushEDX_Module[i]
-				if Reg == "ESI":
-					addy = objs[o].listOP_BasePushESI[i]
-					cnt = objs[o].listOP_BasePushESI_CNT[i]
-					num = objs[o].listOP_BasePushESI_NumOps[i]
-					mod = objs[o].listOP_BasePushESI_Module[i]
-				if Reg == "EDI":
-					addy = objs[o].listOP_BasePushEDI[i]
-					cnt = objs[o].listOP_BasePushEDI_CNT[i]
-					num = objs[o].listOP_BasePushEDI_NumOps[i]
-					mod = objs[o].listOP_BasePushEDI_Module[i]
-				if Reg == "EBP":
-					addy = objs[o].listOP_BasePushEBP[i]
-					cnt = objs[o].listOP_BasePushEBP_CNT[i]
-					num = objs[o].listOP_BasePushEBP_NumOps[i]
-					mod = objs[o].listOP_BasePushEBP_Module[i]
-				if Reg == "ESP":
-					addy = objs[o].listOP_BasePushESP[i]
-					cnt = objs[o].listOP_BasePushESP_CNT[i]
-					num = objs[o].listOP_BasePushESP_NumOps[i]
-					mod = objs[o].listOP_BasePushESP_Module[i]
-				
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if cnt1 > 0:
-				#out = "# PUSH " + str(Reg) + " " + str(mod) + " total: " + str(cnt1) 
-				temp.append(out)
-			total = total + cnt1	
-			o = o + 1
-			clearGOuts()
-		for out in temp:
-			#print out
-			pass#print >> f, out
-		out = "JOP ROCKET"#"# Grand total PUSH "  + str(Reg) + " : " + str(total)
-		#print out
-		print >> f, out
-	o = 0
 	counterReset()
-	clearGOuts()
-	nope(filename, total)
+	i=0
+	for obj in objs:
+		if Reg == "ALL":
+			cnt1 = objs[o].listOP_BasePush.__len__()
+		if Reg == "EAX":
+			cnt1 = objs[o].listOP_BasePushEAX.__len__()
+		if Reg == "EBX":
+			cnt1 = objs[o].listOP_BasePushEBX.__len__()
+		if Reg == "ECX":
+			cnt1 = objs[o].listOP_BasePushECX.__len__()
+		if Reg == "EDX":
+			cnt1 = objs[o].listOP_BasePushEDX.__len__()
+		if Reg == "ESI":
+			cnt1 = objs[o].listOP_BasePushESI.__len__()
+		if Reg == "EDI":
+			cnt1 = objs[o].listOP_BasePushEDI.__len__()
+		if Reg == "ESP":
+			cnt1 = objs[o].listOP_BasePushESP.__len__()
+		if Reg == "EBP":
+			cnt1 = objs[o].listOP_BasePushEBP.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg == "ALL":
+				addy = objs[o].listOP_BasePush[i]
+				cnt = objs[o].listOP_BasePush_CNT[i]
+				num = objs[o].listOP_BasePush_NumOps[i]
+				mod = objs[o].listOP_BasePush_Module[i]
+			if Reg == "EAX":
+				addy = objs[o].listOP_BasePushEAX[i]
+				cnt = objs[o].listOP_BasePushEAX_CNT[i]
+				num = objs[o].listOP_BasePushEAX_NumOps[i]
+				mod = objs[o].listOP_BasePushEAX_Module[i]
+			if Reg == "EBX":
+				addy = objs[o].listOP_BasePushEBX[i]
+				cnt = objs[o].listOP_BasePushEBX_CNT[i]
+				num = objs[o].listOP_BasePushEBX_NumOps[i]
+				mod = objs[o].listOP_BasePushEBX_Module[i]
+			if Reg == "ECX":
+				addy = objs[o].listOP_BasePushECX[i]
+				cnt = objs[o].listOP_BasePushECX_CNT[i]
+				num = objs[o].listOP_BasePushECX_NumOps[i]
+				mod = objs[o].listOP_BasePushECX_Module[i]
+			if Reg == "EDX":
+				addy = objs[o].listOP_BasePushEDX[i]
+				cnt = objs[o].listOP_BasePushEDX_CNT[i]
+				num = objs[o].listOP_BasePushEDX_NumOps[i]
+				mod = objs[o].listOP_BasePushEDX_Module[i]
+			if Reg == "ESI":
+				addy = objs[o].listOP_BasePushESI[i]
+				cnt = objs[o].listOP_BasePushESI_CNT[i]
+				num = objs[o].listOP_BasePushESI_NumOps[i]
+				mod = objs[o].listOP_BasePushESI_Module[i]
+			if Reg == "EDI":
+				addy = objs[o].listOP_BasePushEDI[i]
+				cnt = objs[o].listOP_BasePushEDI_CNT[i]
+				num = objs[o].listOP_BasePushEDI_NumOps[i]
+				mod = objs[o].listOP_BasePushEDI_Module[i]
+			if Reg == "EBP":
+				addy = objs[o].listOP_BasePushEBP[i]
+				cnt = objs[o].listOP_BasePushEBP_CNT[i]
+				num = objs[o].listOP_BasePushEBP_NumOps[i]
+				mod = objs[o].listOP_BasePushEBP_Module[i]
+			if Reg == "ESP":
+				addy = objs[o].listOP_BasePushESP[i]
+				cnt = objs[o].listOP_BasePushESP_CNT[i]
+				num = objs[o].listOP_BasePushESP_NumOps[i]
+				mod = objs[o].listOP_BasePushESP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num,"jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+	o = 0
 
 def printlistOP_Pop(NumOpsDis, Reg):
-	# print "pop " + Reg
+	global printPop
+	global directory
+	global printStyle
+	operation="Pop OP"
+	lock = False
 	global o
-	idval = 1
+	o=0
 	clearHashChecker()
-	while os.path.exists("%s-POP_OP_%s-%s.txt" % (peName, Reg, idval)):
-	    idval += 1
-	filename = peName +"-POP_OP_" + Reg + "-" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			if Reg == "ALL":
-				cnt1 = objs[o].listOP_BasePop.__len__()
-
-			if Reg == "EAX":
-				cnt1 = objs[o].listOP_BasePopEAX.__len__()
-			if Reg == "EBX":
-				cnt1 = objs[o].listOP_BasePopEBX.__len__()
-			if Reg == "ECX":
-				cnt1 = objs[o].listOP_BasePopECX.__len__()
-			if Reg == "EDX":
-				cnt1 = objs[o].listOP_BasePopEDX.__len__()
-			if Reg == "ESI":
-				cnt1 = objs[o].listOP_BasePopESI.__len__()
-			if Reg == "EDI":
-				cnt1 = objs[o].listOP_BasePopEDI.__len__()
-			if Reg == "ESP":
-				cnt1 = objs[o].listOP_BasePopESP.__len__()
-			if Reg == "EBP":
-				cnt1 = objs[o].listOP_BasePopEBP.__len__()
-			for i in range (cnt1):
-				#print "\n@POP: ^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
-				#print >> f, "@POP: ^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-				# print "cnt" + str(cnt1)
-				# print  Reg
-
-
-				addy =0
-				cnt = 0   #
-				num = 0
-				if Reg == "ALL":
-					addy = objs[o].listOP_BasePop[i]
-					cnt = objs[o].listOP_BasePop_CNT[i]
-					num = objs[o].listOP_BasePop_NumOps[i]
-					mod = objs[o].listOP_BasePop_Module[i]
-				if Reg == "EAX":
-					addy = objs[o].listOP_BasePopEAX[i]
-					cnt = objs[o].listOP_BasePopEAX_CNT[i]
-					num = objs[o].listOP_BasePopEAX_NumOps[i]
-					mod = objs[o].listOP_BasePopEAX_Module[i]
-				if Reg == "EBX":
-					addy = objs[o].listOP_BasePopEBX[i]
-					cnt = objs[o].listOP_BasePopEBX_CNT[i]
-					num = objs[o].listOP_BasePopEBX_NumOps[i]
-					mod = objs[o].listOP_BasePopEBX_Module[i]
-				if Reg == "ECX":
-					addy = objs[o].listOP_BasePopECX[i]
-					cnt = objs[o].listOP_BasePopECX_CNT[i]
-					num = objs[o].listOP_BasePopECX_NumOps[i]
-					mod = objs[o].listOP_BasePopECX_Module[i]
-				if Reg == "EDX":
-					addy = objs[o].listOP_BasePopEDX[i]
-					cnt = objs[o].listOP_BasePopEDX_CNT[i]
-					num = objs[o].listOP_BasePopEDX_NumOps[i]
-					mod = objs[o].listOP_BasePopEDX_Module[i]
-				if Reg == "ESI":
-					addy = objs[o].listOP_BasePopESI[i]
-					cnt = objs[o].listOP_BasePopESI_CNT[i]
-					num = objs[o].listOP_BasePopESI_NumOps[i]
-					mod = objs[o].listOP_BasePopESI_Module[i]
-				if Reg == "EDI":
-					addy = objs[o].listOP_BasePopEDI[i]
-					cnt = objs[o].listOP_BasePopEDI_CNT[i]
-					num = objs[o].listOP_BasePopEDI_NumOps[i]
-					mod = objs[o].listOP_BasePopEDI_Module[i]
-				if Reg == "EBP":
-					addy = objs[o].listOP_BasePopEBP[i]
-					cnt = objs[o].listOP_BasePopEBP_CNT[i]
-					num = objs[o].listOP_BasePopEBP_NumOps[i]
-					mod = objs[o].listOP_BasePopEBP_Module[i]
-				if Reg == "ESP":
-					addy = objs[o].listOP_BasePopESP[i]
-					cnt = objs[o].listOP_BasePopESP_CNT[i]
-					num = objs[o].listOP_BasePopESP_NumOps[i]
-					mod = objs[o].listOP_BasePopESP_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if cnt1 > 0:
-				#out = "# POP " + str(Reg) + " " + str(mod) + " total: " + str(cnt1) 
-				temp.append(out)
-			total = total + cnt1	
-			o = o + 1
-			clearGOuts()
-		for out in temp:
-			#print out
-			pass#print >> f, out
-		out = "JOP ROCKET"#"# Grand total POP "  + str(Reg) + " : " + str(total)
-		#print out
-		print >> f, out
-	o = 0
 	counterReset()
-	clearGOuts()
-	nope(filename, total)
+	i=0
+	for obj in objs:
+		if Reg == "ALL":
+			cnt1 = objs[o].listOP_BasePop.__len__()
+		if Reg == "EAX":
+			cnt1 = objs[o].listOP_BasePopEAX.__len__()
+		if Reg == "EBX":
+			cnt1 = objs[o].listOP_BasePopEBX.__len__()
+		if Reg == "ECX":
+			cnt1 = objs[o].listOP_BasePopECX.__len__()
+		if Reg == "EDX":
+			cnt1 = objs[o].listOP_BasePopEDX.__len__()
+		if Reg == "ESI":
+			cnt1 = objs[o].listOP_BasePopESI.__len__()
+		if Reg == "EDI":
+			cnt1 = objs[o].listOP_BasePopEDI.__len__()
+		if Reg == "ESP":
+			cnt1 = objs[o].listOP_BasePopESP.__len__()
+		if Reg == "EBP":
+			cnt1 = objs[o].listOP_BasePopEBP.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg == "ALL":
+				addy = objs[o].listOP_BasePop[i]
+				cnt = objs[o].listOP_BasePop_CNT[i]
+				num = objs[o].listOP_BasePop_NumOps[i]
+				mod = objs[o].listOP_BasePop_Module[i]
+			if Reg == "EAX":
+				addy = objs[o].listOP_BasePopEAX[i]
+				cnt = objs[o].listOP_BasePopEAX_CNT[i]
+				num = objs[o].listOP_BasePopEAX_NumOps[i]
+				mod = objs[o].listOP_BasePopEAX_Module[i]
+			if Reg == "EBX":
+				addy = objs[o].listOP_BasePopEBX[i]
+				cnt = objs[o].listOP_BasePopEBX_CNT[i]
+				num = objs[o].listOP_BasePopEBX_NumOps[i]
+				mod = objs[o].listOP_BasePopEBX_Module[i]
+			if Reg == "ECX":
+				addy = objs[o].listOP_BasePopECX[i]
+				cnt = objs[o].listOP_BasePopECX_CNT[i]
+				num = objs[o].listOP_BasePopECX_NumOps[i]
+				mod = objs[o].listOP_BasePopECX_Module[i]
+			if Reg == "EDX":
+				addy = objs[o].listOP_BasePopEDX[i]
+				cnt = objs[o].listOP_BasePopEDX_CNT[i]
+				num = objs[o].listOP_BasePopEDX_NumOps[i]
+				mod = objs[o].listOP_BasePopEDX_Module[i]
+			if Reg == "ESI":
+				addy = objs[o].listOP_BasePopESI[i]
+				cnt = objs[o].listOP_BasePopESI_CNT[i]
+				num = objs[o].listOP_BasePopESI_NumOps[i]
+				mod = objs[o].listOP_BasePopESI_Module[i]
+			if Reg == "EDI":
+				addy = objs[o].listOP_BasePopEDI[i]
+				cnt = objs[o].listOP_BasePopEDI_CNT[i]
+				num = objs[o].listOP_BasePopEDI_NumOps[i]
+				mod = objs[o].listOP_BasePopEDI_Module[i]
+			if Reg == "EBP":
+				addy = objs[o].listOP_BasePopEBP[i]
+				cnt = objs[o].listOP_BasePopEBP_CNT[i]
+				num = objs[o].listOP_BasePopEBP_NumOps[i]
+				mod = objs[o].listOP_BasePopEBP_Module[i]
+			if Reg == "ESP":
+				addy = objs[o].listOP_BasePopESP[i]
+				cnt = objs[o].listOP_BasePopESP_CNT[i]
+				num = objs[o].listOP_BasePopESP_NumOps[i]
+				mod = objs[o].listOP_BasePopESP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num,"jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+	o = 0
 
 def printlistOP_Inc(NumOpsDis, Reg):
+	global printInc
+	global directory
+	global printStyle
+	operation="Inc OP"
+	lock = False
 	global o
-	idval = 1
+	o=0
 	clearHashChecker()
-	while os.path.exists("%s-INC_OP_%s-%s.txt" % (peName, Reg, idval)):
-	    idval += 1
-	filename = peName +"-INC_OP_" + Reg + "-" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			if Reg == "ALL":
-				cnt1 = objs[o].listOP_BaseInc.__len__()
-
-			if Reg == "EAX":
-				cnt1 = objs[o].listOP_BaseIncEAX.__len__()
-			if Reg == "EBX":
-				cnt1 = objs[o].listOP_BaseIncEBX.__len__()
-			if Reg == "ECX":
-				cnt1 = objs[o].listOP_BaseIncECX.__len__()
-			if Reg == "EDX":
-				cnt1 = objs[o].listOP_BaseIncEDX.__len__()
-			if Reg == "ESI":
-				cnt1 = objs[o].listOP_BaseIncESI.__len__()
-			if Reg == "EDI":
-				cnt1 = objs[o].listOP_BaseIncEDI.__len__()
-			if Reg == "ESP":
-				cnt1 = objs[o].listOP_BaseIncESP.__len__()
-			if Reg == "EBP":
-				cnt1 = objs[o].listOP_BaseIncEBP.__len__()
-			for i in range (cnt1):
-				#print "\n@INC: ^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
-				#print >> f, "@INC: ^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-
-
-				addy =0
-				cnt = 0   #
-				num = 0
-				if Reg == "ALL":
-					addy = objs[o].listOP_BaseInc[i]
-					cnt = objs[o].listOP_BaseInc_CNT[i]
-					num = objs[o].listOP_BaseInc_NumOps[i]
-					mod = objs[o].listOP_BaseInc_Module[i]
-				if Reg == "EAX":
-					addy = objs[o].listOP_BaseIncEAX[i]
-					cnt = objs[o].listOP_BaseIncEAX_CNT[i]
-					num = objs[o].listOP_BaseIncEAX_NumOps[i]
-					mod = objs[o].listOP_BaseIncEAX_Module[i]
-				if Reg == "EBX":
-					addy = objs[o].listOP_BaseIncEBX[i]
-					cnt = objs[o].listOP_BaseIncEBX_CNT[i]
-					num = objs[o].listOP_BaseIncEBX_NumOps[i]
-					mod = objs[o].listOP_BaseIncEBX_Module[i]
-				if Reg == "ECX":
-					addy = objs[o].listOP_BaseIncECX[i]
-					cnt = objs[o].listOP_BaseIncECX_CNT[i]
-					num = objs[o].listOP_BaseIncECX_NumOps[i]
-					mod = objs[o].listOP_BaseIncECX_Module[i]
-				if Reg == "EDX":
-					addy = objs[o].listOP_BaseIncEDX[i]
-					cnt = objs[o].listOP_BaseIncEDX_CNT[i]
-					num = objs[o].listOP_BaseIncEDX_NumOps[i]
-					mod = objs[o].listOP_BaseIncEDX_Module[i]
-				if Reg == "ESI":
-					addy = objs[o].listOP_BaseIncESI[i]
-					cnt = objs[o].listOP_BaseIncESI_CNT[i]
-					num = objs[o].listOP_BaseIncESI_NumOps[i]
-					mod = objs[o].listOP_BaseIncESI_Module[i]
-				if Reg == "EDI":
-					addy = objs[o].listOP_BaseIncEDI[i]
-					cnt = objs[o].listOP_BaseIncEDI_CNT[i]
-					num = objs[o].listOP_BaseIncEDI_NumOps[i]
-					mod = objs[o].listOP_BaseIncEDI_Module[i]
-				if Reg == "EBP":
-					addy = objs[o].listOP_BaseIncEBP[i]
-					cnt = objs[o].listOP_BaseIncEBP_CNT[i]
-					num = objs[o].listOP_BaseIncEBP_NumOps[i]
-					mod = objs[o].listOP_BaseIncEBP_Module[i]
-				if Reg == "ESP":
-					addy = objs[o].listOP_BaseIncESP[i]
-					cnt = objs[o].listOP_BaseIncESP_CNT[i]
-					num = objs[o].listOP_BaseIncESP_NumOps[i]
-					mod = objs[o].listOP_BaseIncESP_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if cnt1 > 0:
-				out = "# INC " + str(Reg) + " " + str(mod) + " total: " + str(cnt1) 
-				temp.append(out)
-			total = total + cnt1	
-			o = o + 1
-			clearGOuts()
-		for out in temp:
-			#print out
-			pass#print >> f, out
-		out = "JOP ROCKET"#"# Grand total INC "  + str(Reg) + " : " + str(total)
-		#print out
-		print >> f, out
-	o = 0
 	counterReset()
-	clearGOuts()
-	nope(filename, total)
+	i=0
+	for obj in objs:
+		if Reg == "ALL":
+			cnt1 = objs[o].listOP_BaseInc.__len__()
+		if Reg == "EAX":
+			cnt1 = objs[o].listOP_BaseIncEAX.__len__()
+		if Reg == "EBX":
+			cnt1 = objs[o].listOP_BaseIncEBX.__len__()
+		if Reg == "ECX":
+			cnt1 = objs[o].listOP_BaseIncECX.__len__()
+		if Reg == "EDX":
+			cnt1 = objs[o].listOP_BaseIncEDX.__len__()
+		if Reg == "ESI":
+			cnt1 = objs[o].listOP_BaseIncESI.__len__()
+		if Reg == "EDI":
+			cnt1 = objs[o].listOP_BaseIncEDI.__len__()
+		if Reg == "ESP":
+			cnt1 = objs[o].listOP_BaseIncESP.__len__()
+		if Reg == "EBP":
+			cnt1 = objs[o].listOP_BaseIncEBP.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg == "ALL":
+				addy = objs[o].listOP_BaseInc[i]
+				cnt = objs[o].listOP_BaseInc_CNT[i]
+				num = objs[o].listOP_BaseInc_NumOps[i]
+				mod = objs[o].listOP_BaseInc_Module[i]
+			if Reg == "EAX":
+				addy = objs[o].listOP_BaseIncEAX[i]
+				cnt = objs[o].listOP_BaseIncEAX_CNT[i]
+				num = objs[o].listOP_BaseIncEAX_NumOps[i]
+				mod = objs[o].listOP_BaseIncEAX_Module[i]
+			if Reg == "EBX":
+				addy = objs[o].listOP_BaseIncEBX[i]
+				cnt = objs[o].listOP_BaseIncEBX_CNT[i]
+				num = objs[o].listOP_BaseIncEBX_NumOps[i]
+				mod = objs[o].listOP_BaseIncEBX_Module[i]
+			if Reg == "ECX":
+				addy = objs[o].listOP_BaseIncECX[i]
+				cnt = objs[o].listOP_BaseIncECX_CNT[i]
+				num = objs[o].listOP_BaseIncECX_NumOps[i]
+				mod = objs[o].listOP_BaseIncECX_Module[i]
+			if Reg == "EDX":
+				addy = objs[o].listOP_BaseIncEDX[i]
+				cnt = objs[o].listOP_BaseIncEDX_CNT[i]
+				num = objs[o].listOP_BaseIncEDX_NumOps[i]
+				mod = objs[o].listOP_BaseIncEDX_Module[i]
+			if Reg == "ESI":
+				addy = objs[o].listOP_BaseIncESI[i]
+				cnt = objs[o].listOP_BaseIncESI_CNT[i]
+				num = objs[o].listOP_BaseIncESI_NumOps[i]
+				mod = objs[o].listOP_BaseIncESI_Module[i]
+			if Reg == "EDI":
+				addy = objs[o].listOP_BaseIncEDI[i]
+				cnt = objs[o].listOP_BaseIncEDI_CNT[i]
+				num = objs[o].listOP_BaseIncEDI_NumOps[i]
+				mod = objs[o].listOP_BaseIncEDI_Module[i]
+			if Reg == "EBP":
+				addy = objs[o].listOP_BaseIncEBP[i]
+				cnt = objs[o].listOP_BaseIncEBP_CNT[i]
+				num = objs[o].listOP_BaseIncEBP_NumOps[i]
+				mod = objs[o].listOP_BaseIncEBP_Module[i]
+			if Reg == "ESP":
+				addy = objs[o].listOP_BaseIncESP[i]
+				cnt = objs[o].listOP_BaseIncESP_CNT[i]
+				num = objs[o].listOP_BaseIncESP_NumOps[i]
+				mod = objs[o].listOP_BaseIncESP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num,"jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+	o = 0
 
 def printlistOP_Dec(NumOpsDis, Reg):
+	global printDec
+	global directory
+	global printStyle
+	operation="Dec OP"
+	lock = False
 	global o
-	idval = 1
+	o=0
 	clearHashChecker()
-	while os.path.exists("%s-DEC_OP_%s-%s.txt" % (peName, Reg, idval)):
-	    idval += 1
-	filename = peName +"-DEC_OP_" + Reg + "-" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			if Reg == "ALL":
-				cnt1 = objs[o].listOP_BaseDec.__len__()
-
-			if Reg == "EAX":
-				cnt1 = objs[o].listOP_BaseDecEAX.__len__()
-			if Reg == "EBX":
-				cnt1 = objs[o].listOP_BaseDecEBX.__len__()
-			if Reg == "ECX":
-				cnt1 = objs[o].listOP_BaseDecECX.__len__()
-			if Reg == "EDX":
-				cnt1 = objs[o].listOP_BaseDecEDX.__len__()
-			if Reg == "ESI":
-				cnt1 = objs[o].listOP_BaseDecESI.__len__()
-			if Reg == "EDI":
-				cnt1 = objs[o].listOP_BaseDecEDI.__len__()
-			if Reg == "ESP":
-				cnt1 = objs[o].listOP_BaseDecESP.__len__()
-			if Reg == "EBP":
-				cnt1 = objs[o].listOP_BaseDecEBP.__len__()
-			for i in range (cnt1):
-				#print "\n@DEC: ^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
-				#print >> f, "@DEC: ^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-
-
-				addy =0
-				cnt = 0   #
-				num = 0
-				if Reg == "ALL":
-					addy = objs[o].listOP_BaseDec[i]
-					cnt = objs[o].listOP_BaseDec_CNT[i]
-					num = objs[o].listOP_BaseDec_NumOps[i]
-					mod = objs[o].listOP_BaseDec_Module[i]
-				if Reg == "EAX":
-					addy = objs[o].listOP_BaseDecEAX[i]
-					cnt = objs[o].listOP_BaseDecEAX_CNT[i]
-					num = objs[o].listOP_BaseDecEAX_NumOps[i]
-					mod = objs[o].listOP_BaseDecEAX_Module[i]
-				if Reg == "EBX":
-					addy = objs[o].listOP_BaseDecEBX[i]
-					cnt = objs[o].listOP_BaseDecEBX_CNT[i]
-					num = objs[o].listOP_BaseDecEBX_NumOps[i]
-					mod = objs[o].listOP_BaseDecEBX_Module[i]
-				if Reg == "ECX":
-					addy = objs[o].listOP_BaseDecECX[i]
-					cnt = objs[o].listOP_BaseDecECX_CNT[i]
-					num = objs[o].listOP_BaseDecECX_NumOps[i]
-					mod = objs[o].listOP_BaseDecECX_Module[i]
-				if Reg == "EDX":
-					addy = objs[o].listOP_BaseDecEDX[i]
-					cnt = objs[o].listOP_BaseDecEDX_CNT[i]
-					num = objs[o].listOP_BaseDecEDX_NumOps[i]
-					mod = objs[o].listOP_BaseDecEDX_Module[i]
-				if Reg == "ESI":
-					addy = objs[o].listOP_BaseDecESI[i]
-					cnt = objs[o].listOP_BaseDecESI_CNT[i]
-					num = objs[o].listOP_BaseDecESI_NumOps[i]
-					mod = objs[o].listOP_BaseDecESI_Module[i]
-				if Reg == "EDI":
-					addy = objs[o].listOP_BaseDecEDI[i]
-					cnt = objs[o].listOP_BaseDecEDI_CNT[i]
-					num = objs[o].listOP_BaseDecEDI_NumOps[i]
-					mod = objs[o].listOP_BaseDecEDI_Module[i]
-				if Reg == "EBP":
-					addy = objs[o].listOP_BaseDecEBP[i]
-					cnt = objs[o].listOP_BaseDecEBP_CNT[i]
-					num = objs[o].listOP_BaseDecEBP_NumOps[i]
-					mod = objs[o].listOP_BaseDecEBP_Module[i]
-				if Reg == "ESP":
-					addy = objs[o].listOP_BaseDecESP[i]
-					cnt = objs[o].listOP_BaseDecESP_CNT[i]
-					num = objs[o].listOP_BaseDecESP_NumOps[i]
-					mod = objs[o].listOP_BaseDecESP_Module[i]
-				
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if cnt1 > 0:
-				out = "# DEC " + str(Reg) + " " + str(mod) + " total: " + str(cnt1) 
-				temp.append(out)
-			total = total + cnt1	
-			o = o + 1
-			clearGOuts()
-		for out in temp:
-			#print out
-			pass#print >> f, out
-		out = "JOP ROCKET"#"# Grand total DEC "  + str(Reg) + " : " + str(total)
-		#print out
-		print >> f, out
-	o = 0
 	counterReset()
-	clearGOuts()
-	nope(filename, total)
-
+	i=0
+	for obj in objs:
+		if Reg == "ALL":
+			cnt1 = objs[o].listOP_BaseDec.__len__()
+		if Reg == "EAX":
+			cnt1 = objs[o].listOP_BaseDecEAX.__len__()
+		if Reg == "EBX":
+			cnt1 = objs[o].listOP_BaseDecEBX.__len__()
+		if Reg == "ECX":
+			cnt1 = objs[o].listOP_BaseDecECX.__len__()
+		if Reg == "EDX":
+			cnt1 = objs[o].listOP_BaseDecEDX.__len__()
+		if Reg == "ESI":
+			cnt1 = objs[o].listOP_BaseDecESI.__len__()
+		if Reg == "EDI":
+			cnt1 = objs[o].listOP_BaseDecEDI.__len__()
+		if Reg == "ESP":
+			cnt1 = objs[o].listOP_BaseDecESP.__len__()
+		if Reg == "EBP":
+			cnt1 = objs[o].listOP_BaseDecEBP.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg == "ALL":
+				addy = objs[o].listOP_BaseDec[i]
+				cnt = objs[o].listOP_BaseDec_CNT[i]
+				num = objs[o].listOP_BaseDec_NumOps[i]
+				mod = objs[o].listOP_BaseDec_Module[i]
+			if Reg == "EAX":
+				addy = objs[o].listOP_BaseDecEAX[i]
+				cnt = objs[o].listOP_BaseDecEAX_CNT[i]
+				num = objs[o].listOP_BaseDecEAX_NumOps[i]
+				mod = objs[o].listOP_BaseDecEAX_Module[i]
+			if Reg == "EBX":
+				addy = objs[o].listOP_BaseDecEBX[i]
+				cnt = objs[o].listOP_BaseDecEBX_CNT[i]
+				num = objs[o].listOP_BaseDecEBX_NumOps[i]
+				mod = objs[o].listOP_BaseDecEBX_Module[i]
+			if Reg == "ECX":
+				addy = objs[o].listOP_BaseDecECX[i]
+				cnt = objs[o].listOP_BaseDecECX_CNT[i]
+				num = objs[o].listOP_BaseDecECX_NumOps[i]
+				mod = objs[o].listOP_BaseDecECX_Module[i]
+			if Reg == "EDX":
+				addy = objs[o].listOP_BaseDecEDX[i]
+				cnt = objs[o].listOP_BaseDecEDX_CNT[i]
+				num = objs[o].listOP_BaseDecEDX_NumOps[i]
+				mod = objs[o].listOP_BaseDecEDX_Module[i]
+			if Reg == "ESI":
+				addy = objs[o].listOP_BaseDecESI[i]
+				cnt = objs[o].listOP_BaseDecESI_CNT[i]
+				num = objs[o].listOP_BaseDecESI_NumOps[i]
+				mod = objs[o].listOP_BaseDecESI_Module[i]
+			if Reg == "EDI":
+				addy = objs[o].listOP_BaseDecEDI[i]
+				cnt = objs[o].listOP_BaseDecEDI_CNT[i]
+				num = objs[o].listOP_BaseDecEDI_NumOps[i]
+				mod = objs[o].listOP_BaseDecEDI_Module[i]
+			if Reg == "EBP":
+				addy = objs[o].listOP_BaseDecEBP[i]
+				cnt = objs[o].listOP_BaseDecEBP_CNT[i]
+				num = objs[o].listOP_BaseDecEBP_NumOps[i]
+				mod = objs[o].listOP_BaseDecEBP_Module[i]
+			if Reg == "ESP":
+				addy = objs[o].listOP_BaseDecESP[i]
+				cnt = objs[o].listOP_BaseDecESP_CNT[i]
+				num = objs[o].listOP_BaseDecESP_NumOps[i]
+				mod = objs[o].listOP_BaseDecESP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num,"jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+	o = 0
 
 def printlistOP_Xchg(NumOpsDis, Reg):
+	global printXchg
+	global directory
+	global printStyle
+	operation="Xchg OP"
+	lock = False
 	global o
-	idval = 1
+	o=0
 	clearHashChecker()
-	while os.path.exists("%s-XCHG_OP_%s-%s.txt" % (peName, Reg, idval)):
-	    idval += 1
-	filename = peName +"-XCHG_OP_" + Reg + "-" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
+	counterReset()
+	i=0
+	for obj in objs:
+		if Reg == "ALL":
+			cnt1 = objs[o].listOP_BaseXchg.__len__()
+		if Reg == "EAX":
+			cnt1 = objs[o].listOP_BaseXchgEAX.__len__()
+		if Reg == "EBX":
+			cnt1 = objs[o].listOP_BaseXchgEBX.__len__()
+		if Reg == "ECX":
+			cnt1 = objs[o].listOP_BaseXchgECX.__len__()
+		if Reg == "EDX":
+			cnt1 = objs[o].listOP_BaseXchgEDX.__len__()
+		if Reg == "ESI":
+			cnt1 = objs[o].listOP_BaseXchgESI.__len__()
+		if Reg == "EDI":
+			cnt1 = objs[o].listOP_BaseXchgEDI.__len__()
+		if Reg == "ESP":
+			cnt1 = objs[o].listOP_BaseXchgESP.__len__()
+		if Reg == "EBP":
+			cnt1 = objs[o].listOP_BaseXchgEBP.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
 			if Reg == "ALL":
-				cnt1 = objs[o].listOP_BaseXchg.__len__()
-
+				addy = objs[o].listOP_BaseXchg[i]
+				cnt = objs[o].listOP_BaseXchg_CNT[i]
+				num = objs[o].listOP_BaseXchg_NumOps[i]
+				mod = objs[o].listOP_BaseXchg_Module[i]
 			if Reg == "EAX":
-				cnt1 = objs[o].listOP_BaseXchgEAX.__len__()
+				addy = objs[o].listOP_BaseXchgEAX[i]
+				cnt = objs[o].listOP_BaseXchgEAX_CNT[i]
+				num = objs[o].listOP_BaseXchgEAX_NumOps[i]
+				mod = objs[o].listOP_BaseXchgEAX_Module[i]
 			if Reg == "EBX":
-				cnt1 = objs[o].listOP_BaseXchgEBX.__len__()
+				addy = objs[o].listOP_BaseXchgEBX[i]
+				cnt = objs[o].listOP_BaseXchgEBX_CNT[i]
+				num = objs[o].listOP_BaseXchgEBX_NumOps[i]
+				mod = objs[o].listOP_BaseXchgEBX_Module[i]
 			if Reg == "ECX":
-				cnt1 = objs[o].listOP_BaseXchgECX.__len__()
+				addy = objs[o].listOP_BaseXchgECX[i]
+				cnt = objs[o].listOP_BaseXchgECX_CNT[i]
+				num = objs[o].listOP_BaseXchgECX_NumOps[i]
+				mod = objs[o].listOP_BaseXchgECX_Module[i]
 			if Reg == "EDX":
-				cnt1 = objs[o].listOP_BaseXchgEDX.__len__()
+				addy = objs[o].listOP_BaseXchgEDX[i]
+				cnt = objs[o].listOP_BaseXchgEDX_CNT[i]
+				num = objs[o].listOP_BaseXchgEDX_NumOps[i]
+				mod = objs[o].listOP_BaseXchgEDX_Module[i]
 			if Reg == "ESI":
-				cnt1 = objs[o].listOP_BaseXchgESI.__len__()
+				addy = objs[o].listOP_BaseXchgESI[i]
+				cnt = objs[o].listOP_BaseXchgESI_CNT[i]
+				num = objs[o].listOP_BaseXchgESI_NumOps[i]
+				mod = objs[o].listOP_BaseXchgESI_Module[i]
 			if Reg == "EDI":
-				cnt1 = objs[o].listOP_BaseXchgEDI.__len__()
-			if Reg == "ESP":
-				cnt1 = objs[o].listOP_BaseXchgESP.__len__()
+				addy = objs[o].listOP_BaseXchgEDI[i]
+				cnt = objs[o].listOP_BaseXchgEDI_CNT[i]
+				num = objs[o].listOP_BaseXchgEDI_NumOps[i]
+				mod = objs[o].listOP_BaseXchgEDI_Module[i]
 			if Reg == "EBP":
-				cnt1 = objs[o].listOP_BaseXchgEBP.__len__()
-			for i in range (cnt1):
-				#print "\n@XCHG: ^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
-				#print >> f, "@XCHG: ^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-
-
-				addy =0
-				cnt = 0   #
-				num = 0
-				if Reg == "ALL":
-					addy = objs[o].listOP_BaseXchg[i]
-					cnt = objs[o].listOP_BaseXchg_CNT[i]
-					num = objs[o].listOP_BaseXchg_NumOps[i]
-					mod = objs[o].listOP_BaseXchg_Module[i]
-				if Reg == "EAX":
-					addy = objs[o].listOP_BaseXchgEAX[i]
-					cnt = objs[o].listOP_BaseXchgEAX_CNT[i]
-					num = objs[o].listOP_BaseXchgEAX_NumOps[i]
-					mod = objs[o].listOP_BaseXchgEAX_Module[i]
-				if Reg == "EBX":
-					addy = objs[o].listOP_BaseXchgEBX[i]
-					cnt = objs[o].listOP_BaseXchgEBX_CNT[i]
-					num = objs[o].listOP_BaseXchgEBX_NumOps[i]
-					mod = objs[o].listOP_BaseXchgEBX_Module[i]
-				if Reg == "ECX":
-					addy = objs[o].listOP_BaseXchgECX[i]
-					cnt = objs[o].listOP_BaseXchgECX_CNT[i]
-					num = objs[o].listOP_BaseXchgECX_NumOps[i]
-					mod = objs[o].listOP_BaseXchgECX_Module[i]
-				if Reg == "EDX":
-					addy = objs[o].listOP_BaseXchgEDX[i]
-					cnt = objs[o].listOP_BaseXchgEDX_CNT[i]
-					num = objs[o].listOP_BaseXchgEDX_NumOps[i]
-					mod = objs[o].listOP_BaseXchgEDX_Module[i]
-				if Reg == "ESI":
-					addy = objs[o].listOP_BaseXchgESI[i]
-					cnt = objs[o].listOP_BaseXchgESI_CNT[i]
-					num = objs[o].listOP_BaseXchgESI_NumOps[i]
-					mod = objs[o].listOP_BaseXchgESI_Module[i]
-				if Reg == "EDI":
-					addy = objs[o].listOP_BaseXchgEDI[i]
-					cnt = objs[o].listOP_BaseXchgEDI_CNT[i]
-					num = objs[o].listOP_BaseXchgEDI_NumOps[i]
-					mod = objs[o].listOP_BaseXchgEDI_Module[i]
-				if Reg == "EBP":
-					addy = objs[o].listOP_BaseXchgEBP[i]
-					cnt = objs[o].listOP_BaseXchgEBP_CNT[i]
-					num = objs[o].listOP_BaseXchgEBP_NumOps[i]
-					mod = objs[o].listOP_BaseXchgEBP_Module[i]
-				if Reg == "ESP":
-					addy = objs[o].listOP_BaseXchgESP[i]
-					cnt = objs[o].listOP_BaseXchgESP_CNT[i]
-					num = objs[o].listOP_BaseXchgESP_NumOps[i]
-					mod = objs[o].listOP_BaseXchgESP_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+				addy = objs[o].listOP_BaseXchgEBP[i]
+				cnt = objs[o].listOP_BaseXchgEBP_CNT[i]
+				num = objs[o].listOP_BaseXchgEBP_NumOps[i]
+				mod = objs[o].listOP_BaseXchgEBP_Module[i]
+			if Reg == "ESP":
+				addy = objs[o].listOP_BaseXchgESP[i]
+				cnt = objs[o].listOP_BaseXchgESP_CNT[i]
+				num = objs[o].listOP_BaseXchgESP_NumOps[i]
+				mod = objs[o].listOP_BaseXchgESP_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num,"jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if cnt1 > 0:
-			#	out = "# XCHG " + str(Reg) + " " + str(mod) + " total: " + str(cnt1) 
-				temp.append(out)
-			total = total + cnt1	
-			o = o + 1
-			clearGOuts()
-		for out in temp:
-			#print out
-			pass#print >> f, out
-		out = "JOP ROCKET"#"# Grand total XCHG "  + str(Reg) + " : " + str(total)
-		#print out
-		print >> f, out
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
 	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
-
-def printlistOP_ShiftLeft(NumOpsDis, Reg):
-	global o
-	idval = 1
-	clearHashChecker()
-	while os.path.exists("%s-SHIFT_LEFT_%s-%s.txt" % (peName, Reg, idval)):
-	    idval += 1
-	filename = peName +"-SHIFT_LEFT_" + Reg + "-" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			if Reg != "0":
-				cnt1 = objs[o].listOP_BaseShiftLeft.__len__()
-
-			for i in range (cnt1):
-				#print "\n@Shift_Left: ^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
-				#print >> f, "@Shift_Left: ^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-
-				addy =0
-				cnt = 0   #
-				num = 0
-				if Reg != "0":
-					addy = objs[o].listOP_BaseShiftLeft[i]
-					cnt = objs[o].listOP_BaseShiftLeft_CNT[i]
-					num = objs[o].listOP_BaseShiftLeft_NumOps[i]
-					mod = objs[o].listOP_BaseShiftLeft_Module[i]
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if cnt1 > 0:
-				#out = "# SHIFT LEFT " + str(Reg) + " " + str(mod) + " total: " + str(cnt1) 
-				temp.append(out)
-			total = total + cnt1	
-			o = o + 1
-			clearGOuts()
-		for out in temp:
-			#print out
-			pass#print >> f, out
-		out = "JOP ROCKET"#"# Grand total SHIFT LEFT "  + str(Reg) + " : " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
-
-def printlistOP_ShiftRight(NumOpsDis, Reg):
-	global o
-	idval = 1
-	clearHashChecker()
-	while os.path.exists("%s-SHIFT_RIGHT_OP_%s-%s.txt" % (peName, Reg, idval)):
-	    idval += 1
-	filename = peName +"-SHIFT_RIGHT_OP_" + Reg + "-" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			if Reg != "0":
-				cnt1 = objs[o].listOP_BaseShiftRight.__len__()
-			for i in range (cnt1):
-				#print "\n@SHIFT_RIGHT: ^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
-				#print >> f, "@SHIFT_RIGHT: ^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-
-
-				addy =0
-				cnt = 0   #
-				num = 0
-				if Reg != "0":
-					addy = objs[o].listOP_BaseShiftRight[i]
-					cnt = objs[o].listOP_BaseShiftRight_CNT[i]
-					num = objs[o].listOP_BaseShiftRight_NumOps[i]
-					mod = objs[o].listOP_BaseShiftRight_Module[i]
-				
-				
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if cnt1 > 0:
-				#out = "# SHIFT RIGHT " + str(Reg) + " " + str(mod) + " total: " + str(cnt1) 
-				temp.append(out)
-			total = total + cnt1	
-			o = o + 1
-			clearGOuts()
-		for out in temp:
-			#print out
-			pass#print >> f, out
-		out = "JOP ROCKET"#"# Grand total SHIFT RIGHT "  + str(Reg) + " : " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
 
 def printlistOP_RotRight(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Rotate Right OP"
+	lock = False
 	global o
-	idval = 1
+	o=0
 	clearHashChecker()
-	while os.path.exists("%s-ROTATE_RIGHT_OP_%s-%s.txt" % (peName, Reg, idval)):
-	    idval += 1
-	filename = peName +"-ROTATE_RIGHT_OP_" + Reg + "-" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			if Reg != "0":
-				cnt1 = objs[o].listOP_BaseRotRight.__len__()
-			for i in range (cnt1):
-				#print "\n@ROTATE_RIGHT: ^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
-				#print >> f, "@ROTATE_RIGHT: ^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-
-				addy =0
-				cnt = 0   #
-				num = 0
-				if Reg != "0":
-					addy = objs[o].listOP_BaseRotRight[i]
-					cnt = objs[o].listOP_BaseRotRight_CNT[i]
-					num = objs[o].listOP_BaseRotRight_NumOps[i]
-					mod = objs[o].listOP_BaseRotRight_Module[i]
-				
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if cnt1 > 0:
-				#out = "# ROTATE RIGHT " + str(Reg) + " " + str(mod) + " total: " + str(cnt1) 
-				temp.append(out)
-			total = total + cnt1	
-			o = o + 1
-			clearGOuts()
-		for out in temp:
-			#print out
-			pass#print >> f, out
-		out = "JOP ROCKET"#"# Grand total ROTATE RIGHT "  + str(Reg) + " : " + str(total)
-		#print out
-		print >> f, out
-	o = 0
 	counterReset()
-	clearGOuts()
-	nope(filename, total)
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseRotRight.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
+				addy = objs[o].listOP_BaseRotRight[i]
+				cnt = objs[o].listOP_BaseRotRight_CNT[i]
+				num = objs[o].listOP_BaseRotRight_NumOps[i]
+				mod = objs[o].listOP_BaseRotRight_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
 
 def printlistOP_RotLeft(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Rotate Left OP"
+	lock = False
 	global o
-	idval = 1
+	o=0
 	clearHashChecker()
-	while os.path.exists("%s-ROTATE_LEFT_OP_%s-%s.txt" % (peName, Reg, idval)):
-	    idval += 1
-	filename = peName +"-ROTATE_LEFT_OP_" + Reg + "-" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			if Reg != "0":
-				cnt1 = objs[o].listOP_BaseRotLeft.__len__()
-
-			for i in range (cnt1):
-				#print "\n@ROTATE_LEFT: ^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
-				#print >> f,"@ROTATE_LEFT: ^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-
-
-				addy =0
-				cnt = 0   #
-				num = 0
-				if Reg != "0":
-					addy = objs[o].listOP_BaseRotLeft[i]
-					cnt = objs[o].listOP_BaseRotLeft_CNT[i]
-					num = objs[o].listOP_BaseRotLeft_NumOps[i]
-					mod = objs[o].listOP_BaseRotLeft_Module[i]
-				
-				out = "Ops: " + str(num) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, num, "jmp")
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
-					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if cnt1 > 0:
-				#out = "# ROTATE LEFT " + str(Reg) + " " + str(mod) + " total: " + str(cnt1) 
-				temp.append(out)
-			total = total + cnt1	
-			o = o + 1
-			clearGOuts()
-		for out in temp:
-			#print out
-			pass#print >> f, out
-		out = "JOP ROCKET"#"# Grand total ROTATE LEFT "  + str(Reg) + " : " + str(total)
-		#print out
-		print >> f, out
-	o = 0
 	counterReset()
-	clearGOuts()
-	nope(filename, total)
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			# print "my count"
+			# print len(objs[o].listOP_BaseRotLeft.__len__())
+			cnt1 = len(objs[o].listOP_BaseRotLeft)
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
+				addy = objs[o].listOP_BaseRotLeft[i]
+				cnt = objs[o].listOP_BaseRotLeft_CNT[i]
+				num = objs[o].listOP_BaseRotLeft_NumOps[i]
+				mod = objs[o].listOP_BaseRotLeft_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
+
+def printlistOP_ShiftRight(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Shift Right OP"
+	lock = False
+	global o
+	o=0
+	clearHashChecker()
+	counterReset()
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseShiftRight.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
+				addy = objs[o].listOP_BaseShiftRight[i]
+				cnt = objs[o].listOP_BaseShiftRight_CNT[i]
+				num = objs[o].listOP_BaseShiftRight_NumOps[i]
+				mod = objs[o].listOP_BaseShiftRight_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
+
+
+def printlistOP_ShiftLeft(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Shift Left OP"
+	lock = False
+	global o
+	o=0
+	clearHashChecker()
+	counterReset()
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseShiftLeft.__len__()
+			# print ("cnt1", cnt1)
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
+				# print ("o", o, "i", i, "objs", len(objs))
+				addy = objs[o].listOP_BaseShiftLeft[i]
+				cnt = objs[o].listOP_BaseShiftLeft_CNT[i]
+				num = objs[o].listOP_BaseShiftLeft_NumOps[i]
+				mod = objs[o].listOP_BaseShiftLeft_Module[i]
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
+					counter()
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
 
 
 
@@ -21002,1151 +24442,1383 @@ def get_Dispatcher_G_Other(NumOpsDis, HowDeep, Reg):
 		o = o + 1
 	o = 0
 
-def printListDG_EAX(NumOpsDis, dg):	
+
+
+
+def printListDG_EAX(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget EAX"
+	lock = False
 	global o
+	o=0
 	clearHashChecker()
-	idval = 1
-	while os.path.exists("%s-DG_DISPATCHER_EAX_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-DG_DISPATCHER_EAX_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_EAX.__len__()  #was cnt
-			for i in range (num): #ibid
-				#print "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
-				
-				
-				#counterShow()
-				addy =0x00
-				cnt = 0    #
+	counterReset()
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_EAX.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_EAX[i]
 				cnt = objs[o].listOP_BaseDG_CNT_EAX[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_EAX[i]
+				num = objs[o].listOP_BaseDG_NumOps_EAX[i]
 				mod = objs[o].listOP_BaseDG_Module_EAX[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				#print out
-				sp()
-				
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #out = "\nJOP ROCKET" #out = "# Dispatcher Gadgets for EAX "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#out = ""#"# Grand total Dispatcher Gadgets for EAX: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
 
-#now9
-def printListDG_EBX(NumOpsDis,dg):	
+
+
+def printListDG_EBX(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget EBX"
+	lock = False
 	global o
+	o=0
 	clearHashChecker()
-	idval = 1
-	while os.path.exists("%s-DG_DISPATCHER_EBX_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-DG_DISPATCHER_EBX_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		# print "dg + " + dg
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_EBX.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	counterReset()
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_EBX.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_EBX[i]
 				cnt = objs[o].listOP_BaseDG_CNT_EBX[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_EBX[i]
+				num = objs[o].listOP_BaseDG_NumOps_EBX[i]
 				mod = objs[o].listOP_BaseDG_Module_EBX[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				#print out
-				sp()
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			out = "\nJOP ROCKET" #out = "\nJOP ROCKET" #out = "# Dispatcher Gadgets for EBX total: " + str(num)
-			if num > 0:
-				out = "\nJOP ROCKET" #out = "# Dispatcher Gadgets for EBX "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#out = ""#"# Grand total Dispatcher Gadgets for EBX: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
 
-def printListDG_ECX(NumOpsDis,dg):	
+
+
+def printListDG_ECX(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget ECX"
+	lock = False
 	global o
+	o=0
 	clearHashChecker()
-	idval = 1
-	while os.path.exists("%s-DG_DISPATCHER_ECX_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-DG_DISPATCHER_ECX_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_ECX.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	counterReset()
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_ECX.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_ECX[i]
 				cnt = objs[o].listOP_BaseDG_CNT_ECX[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_ECX[i]
+				num = objs[o].listOP_BaseDG_NumOps_ECX[i]
 				mod = objs[o].listOP_BaseDG_Module_ECX[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #out = "# Dispatcher Gadgets for ECX "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#out = ""#"# Grand total Dispatcher Gadgets for ECX: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
 
-def printListDG_EDX(NumOpsDis,dg):	
+
+def printListDG_EDX(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget EDX"
+	lock = False
 	global o
+	o=0
 	clearHashChecker()
-	idval = 1
-	while os.path.exists("%s-DG_DISPATCHER_EDX_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-DG_DISPATCHER_EDX_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_EDX.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	counterReset()
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_EDX.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_EDX[i]
 				cnt = objs[o].listOP_BaseDG_CNT_EDX[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_EDX[i]
+				num = objs[o].listOP_BaseDG_NumOps_EDX[i]
 				mod = objs[o].listOP_BaseDG_Module_EDX[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #out = "# Dispatcher Gadgets for EDX "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#out = ""#"# Grand total Dispatcher Gadgets for EDX: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
 
-def printListDG_EDI(NumOpsDis,dg):	
+
+def printListDG_EDI(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget EDI"
+	lock = False
 	global o
+	o=0
 	clearHashChecker()
-	idval = 1
-	while os.path.exists("%s-DG_DISPATCHER_EDI_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-DG_DISPATCHER_EDI_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_EDI.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	counterReset()
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_EDI.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_EDI[i]
 				cnt = objs[o].listOP_BaseDG_CNT_EDI[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_EDI[i]
+				num = objs[o].listOP_BaseDG_NumOps_EDI[i]
 				mod = objs[o].listOP_BaseDG_Module_EDI[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #out = "# Dispatcher Gadgets for EDI "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#out = ""#"# Grand total Dispatcher Gadgets for EDI: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
 
-def printListDG_ESI(NumOpsDis,dg):	
+
+def printListDG_ESI(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget ESI"
+	lock = False
 	global o
+	o=0
 	clearHashChecker()
-	idval = 1
-	while os.path.exists("%s-DG_DISPATCHER_ESI_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-DG_DISPATCHER_ESI_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_ESI.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	counterReset()
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_ESI.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_ESI[i]
 				cnt = objs[o].listOP_BaseDG_CNT_ESI[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_ESI[i]
+				num = objs[o].listOP_BaseDG_NumOps_ESI[i]
 				mod = objs[o].listOP_BaseDG_Module_ESI[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #out = "# Dispatcher Gadgets for ESI "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#out = ""#"# Grand total Dispatcher Gadgets for ESI: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
 
-def printListDG_EBP(NumOpsDis,dg):	
+
+def printListDG_EBP(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget EBP"
+	lock = False
 	global o
+	o=0
 	clearHashChecker()
-	idval = 1
-	while os.path.exists("%s-DG_DISPATCHER_EBP_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-DG_DISPATCHER_EBP_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_EBP.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	counterReset()
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_EBP.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_EBP[i]
 				cnt = objs[o].listOP_BaseDG_CNT_EBP[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_EBP[i]
+				num = objs[o].listOP_BaseDG_NumOps_EBP[i]
 				mod = objs[o].listOP_BaseDG_Module_EBP[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #out = "# Dispatcher Gadgets for EBP "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#out = ""#"# Grand total Dispatcher Gadgets for EBP: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
 
-def printListDG_ESP(NumOpsDis,dg):	
+
+def printListDG_ESP(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget ESP"
+	lock = False
 	global o
+	o=0
 	clearHashChecker()
-	idval = 1
-	while os.path.exists("%s-DG_DISPATCHER_ESP_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName +"-DG_DISPATCHER_ESP_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_ESP.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	counterReset()
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_ESP.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_ESP[i]
 				cnt = objs[o].listOP_BaseDG_CNT_ESP[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_ESP[i]
+				num = objs[o].listOP_BaseDG_NumOps_ESP[i]
 				mod = objs[o].listOP_BaseDG_Module_ESP[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #out = "# Dispatcher Gadgets for ESP "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#out = ""#"# Grand total Dispatcher Gadgets for ESP: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
 
 
-def printListDG_BEST_EAX(NumOpsDis,dg):	
+
+def printListDG_BEST_EAX(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget Best EAX"
+	lock = False
 	global o
-	idval = 1
+	o=0
 	clearHashChecker()
 	counterReset()
-	while os.path.exists("%s-DG_DISPATCHER_BEST_EAX_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName  +"-DG_DISPATCHER_BEST_EAX_" + str(idval) + ".txt"
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_CNT_EAX_Best.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_EAX_Best.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_EAX_Best[i]
 				cnt = objs[o].listOP_BaseDG_CNT_EAX_Best[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_EAX_Best[i]
+				num = objs[o].listOP_BaseDG_NumOps_EAX_Best[i]
 				mod = objs[o].listOP_BaseDG_Module_EAX_Best[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				#print out
-				sp()
-				
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #out = "# Best Dispatcher Gadgets for EAX "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#"# Grand total Beset Dispatcher Gadgets for EAX: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
 
-def printListDG_BEST_EBX(NumOpsDis,dg):	
+
+
+def printListDG_BEST_EBX(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget Best EBX"
+	lock = False
 	global o
-	idval = 1
+	o=0
 	clearHashChecker()
 	counterReset()
-	while os.path.exists("%s-DG_DISPATCHER_BEST_EBX_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName  +"-DG_DISPATCHER_BEST_EBX_" + str(idval) + ".txt"
-	global fname
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_EBX_Best.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_EBX_Best.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_EBX_Best[i]
 				cnt = objs[o].listOP_BaseDG_CNT_EBX_Best[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_EBX_Best[i]
+				num = objs[o].listOP_BaseDG_NumOps_EBX_Best[i]
 				mod = objs[o].listOP_BaseDG_Module_EBX_Best[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				#print out
-				sp()
-				
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #out = "# Best Dispatcher Gadgets for EBX "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#"# Grand total Best Dispatcher Gadgets for EBX: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset() 
-	nope(filename, total)
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
 
-def printListDG_BEST_ECX(NumOpsDis,dg):	
+
+
+def printListDG_BEST_ECX(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget Best ECX"
+	lock = False
 	global o
-	idval = 1
+	o=0
 	clearHashChecker()
 	counterReset()
-	while os.path.exists("%s-DG_DISPATCHER_BEST_ECX_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName  +"-DG_DISPATCHER_BEST_ECX_" + str(idval) + ".txt"
-	global fname
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_ECX_Best.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_ECX_Best.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_ECX_Best[i]
 				cnt = objs[o].listOP_BaseDG_CNT_ECX_Best[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_ECX_Best[i]
+				num = objs[o].listOP_BaseDG_NumOps_ECX_Best[i]
 				mod = objs[o].listOP_BaseDG_Module_ECX_Best[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				#print out
-				sp()
-				
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #out = "# Best Dispatcher Gadgets for ECX "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#"# Grand total Best Dispatcher Gadgets for ECX: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
- 
-def printListDG_BEST_EDX(NumOpsDis,dg):	
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
+
+
+def printListDG_BEST_EDX(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget Best EDX"
+	lock = False
 	global o
-	idval = 1
+	o=0
 	clearHashChecker()
 	counterReset()
-	while os.path.exists("%s-DG_DISPATCHER_BEST_EDX_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName  +"-DG_DISPATCHER_BEST_EDX_" + str(idval) + ".txt"
-	global fname
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		counterReset()
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_EDX_Best.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_EDX_Best.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_EDX_Best[i]
 				cnt = objs[o].listOP_BaseDG_CNT_EDX_Best[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_EDX_Best[i]
+				num = objs[o].listOP_BaseDG_NumOps_EDX_Best[i]
 				mod = objs[o].listOP_BaseDG_Module_EDX_Best[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				#print out
-				sp()
-				
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #out = "# Best Dispatcher Gadgets for EDX "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#"# Grand total Best Dispatcher Gadgets for EDX: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
- 
-def printListDG_BEST_EDI( NumOpsDis,dg):	
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
+
+
+def printListDG_BEST_EDI(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget Best EDI"
+	lock = False
 	global o
+	o=0
 	clearHashChecker()
 	counterReset()
-	idval = 1
-	while os.path.exists("%s-DG_DISPATCHER_BEST_EDI_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName  +"-DG_DISPATCHER_BEST_EDI_" + str(idval) + ".txt"
-	global fname
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_EDI_Best.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_EDI_Best.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_EDI_Best[i]
 				cnt = objs[o].listOP_BaseDG_CNT_EDI_Best[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_EDI_Best[i]
+				num = objs[o].listOP_BaseDG_NumOps_EDI_Best[i]
 				mod = objs[o].listOP_BaseDG_Module_EDI_Best[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #out = "# Best Dispatcher Gadgets for EDI "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#"# Grand total BEST Dispatcher Gadgets for EDI: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
- 
-def printListDG_BEST_ESI( NumOpsDis,dg):	
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
+
+
+def printListDG_BEST_ESI(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget Best ESI"
+	lock = False
 	global o
+	o=0
 	clearHashChecker()
 	counterReset()
-	idval = 1
-	while os.path.exists("%s-DG_DISPATCHER_BEST_ESI_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName  +"-DG_DISPATCHER_BEST_ESI_" + str(idval) + ".txt"
-	global fname
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_ESI_Best.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_ESI_Best.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_ESI_Best[i]
 				cnt = objs[o].listOP_BaseDG_CNT_ESI_Best[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_ESI_Best[i]
+				num = objs[o].listOP_BaseDG_NumOps_ESI_Best[i]
 				mod = objs[o].listOP_BaseDG_Module_ESI_Best[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #out = "# Best Dispatcher Gadgets for ESI "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#"# Grand total BEST Dispatcher Gadgets for ESI: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
- 
-def printListDG_BEST_EBP( NumOpsDis,dg):	
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
+
+
+def printListDG_BEST_EBP(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget Best EBP"
+	lock = False
 	global o
+	o=0
 	clearHashChecker()
 	counterReset()
-	idval = 1
-	while os.path.exists("%s-DG_DISPATCHER_BEST_EBP_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName  +"-DG_DISPATCHER_BEST_EBP_" + str(idval) + ".txt"
-	global fname
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_EBP_Best.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_EBP_Best.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_EBP_Best[i]
 				cnt = objs[o].listOP_BaseDG_CNT_EBP_Best[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_EBP_Best[i]
+				num = objs[o].listOP_BaseDG_NumOps_EBP_Best[i]
 				mod = objs[o].listOP_BaseDG_Module_EBP_Best[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #out = "# Best Dispatcher Gadgets for EBP "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#"# Grand total BEST Dispatcher Gadgets for EBP: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
 
 
-def printListDG_BEST_ESP( NumOpsDis,dg):	
+def printListDG_BEST_ESP(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget Best ESP"
+	lock = False
 	global o
+	o=0
 	clearHashChecker()
 	counterReset()
-	idval = 1
-	while os.path.exists("%s-DG_DISPATCHER_BEST_ESP_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName  +"-DG_DISPATCHER_BEST_ESP_" + str(idval) + ".txt"
-	global fname
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_ESP_Best.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_ESP_Best.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_ESP_Best[i]
 				cnt = objs[o].listOP_BaseDG_CNT_ESP_Best[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_ESP_Best[i]
+				num = objs[o].listOP_BaseDG_NumOps_ESP_Best[i]
 				mod = objs[o].listOP_BaseDG_Module_ESP_Best[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #out = "# Best Dispatcher Gadgets for ESP "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#"# Grand total BEST Dispatcher Gadgets for ESP: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
 
-def printListDG_Other_EAX( NumOpsDis,dg):	
+
+
+def printListDG_Other_EAX(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget Other EAX"
+	lock = False
 	global o
+	o=0
 	clearHashChecker()
 	counterReset()
-	idval = 1
-	while os.path.exists("%s-DG_DISPATCHER_Other_EAX_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName  +"-DG_DISPATCHER_Other_EAX_" + str(idval) + ".txt"
-	global fname
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_EAX_Other.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_EAX_Other.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_EAX_Other[i]
 				cnt = objs[o].listOP_BaseDG_CNT_EAX_Other[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_EAX_Other[i]
+				num = objs[o].listOP_BaseDG_NumOps_EAX_Other[i]
 				mod = objs[o].listOP_BaseDG_Module_EAX_Other[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #"# Other Dispatcher Gadgets for EAX "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#"# Grand total Other Dispatcher Gadgets for EAX: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
 
-def printListDG_Other_EBX( NumOpsDis,dg):	
+
+
+def printListDG_Other_EBX(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget Other EBX"
+	lock = False
 	global o
+	o=0
 	clearHashChecker()
 	counterReset()
-	idval = 1
-	while os.path.exists("%s-DG_DISPATCHER_Other_EBX_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName  +"-DG_DISPATCHER_Other_EBX_" + str(idval) + ".txt"
-	global fname
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_EBX_Other.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_EBX_Other.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_EBX_Other[i]
 				cnt = objs[o].listOP_BaseDG_CNT_EBX_Other[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_EBX_Other[i]
+				num = objs[o].listOP_BaseDG_NumOps_EBX_Other[i]
 				mod = objs[o].listOP_BaseDG_Module_EBX_Other[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #"# Other Dispatcher Gadgets for EBX "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#"# Grand total Other Dispatcher Gadgets for EBX: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
- 
-def printListDG_Other_ECX( NumOpsDis,dg):	
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
+
+
+
+def printListDG_Other_ECX(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget Other ECX"
+	lock = False
 	global o
+	o=0
 	clearHashChecker()
 	counterReset()
-	idval = 1
-	while os.path.exists("%s-DG_DISPATCHER_Other_ECX_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName  +"-DG_DISPATCHER_Other_ECX_" + str(idval) + ".txt"
-	global fname
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_ECX_Other.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_ECX_Other.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_ECX_Other[i]
 				cnt = objs[o].listOP_BaseDG_CNT_ECX_Other[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_ECX_Other[i]
+				num = objs[o].listOP_BaseDG_NumOps_ECX_Other[i]
 				mod = objs[o].listOP_BaseDG_Module_ECX_Other[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #"# Other Dispatcher Gadgets for ECX "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#"# Grand total Other Dispatcher Gadgets for ECX: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
- 
-def printListDG_Other_EDX( NumOpsDis,dg):	
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
+
+
+def printListDG_Other_EDX(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget Other EDX"
+	lock = False
 	global o
+	o=0
 	clearHashChecker()
 	counterReset()
-	idval = 1
-	while os.path.exists("%s-DG_DISPATCHER_Other_EDX_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName  +"-DG_DISPATCHER_Other_EDX_" + str(idval) + ".txt"
-	global fname
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_EDX_Other.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_EDX_Other.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_EDX_Other[i]
 				cnt = objs[o].listOP_BaseDG_CNT_EDX_Other[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_EDX_Other[i]
+				num = objs[o].listOP_BaseDG_NumOps_EDX_Other[i]
 				mod = objs[o].listOP_BaseDG_Module_EDX_Other[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #"# Other Dispatcher Gadgets for EDX "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#"# Grand total Other Dispatcher Gadgets for EDX: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
- 
-def printListDG_Other_EDI( NumOpsDis,dg):	
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
+
+
+def printListDG_Other_EDI(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget Other EDI"
+	lock = False
 	global o
+	o=0
 	clearHashChecker()
 	counterReset()
-	idval = 1
-	while os.path.exists("%s-DG_DISPATCHER_Other_EDI_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName  +"-DG_DISPATCHER_Other_EDI_" + str(idval) + ".txt"
-	global fname
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_EDI_Other.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_EDI_Other.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_EDI_Other[i]
 				cnt = objs[o].listOP_BaseDG_CNT_EDI_Other[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_EDI_Other[i]
+				num = objs[o].listOP_BaseDG_NumOps_EDI_Other[i]
 				mod = objs[o].listOP_BaseDG_Module_EDI_Other[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #"# Other Dispatcher Gadgets for EDI "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#"# Grand total Other Dispatcher Gadgets for EDI: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
- 
-def printListDG_Other_ESI( NumOpsDis,dg):	
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
+
+
+def printListDG_Other_ESI(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget Other ESI"
+	lock = False
 	global o
+	o=0
 	clearHashChecker()
 	counterReset()
-	idval = 1
-	while os.path.exists("%s-DG_DISPATCHER_Other_ESI_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName  +"-DG_DISPATCHER_Other_ESI_" + str(idval) + ".txt"
-	global fname
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_ESI_Other.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_ESI_Other.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_ESI_Other[i]
 				cnt = objs[o].listOP_BaseDG_CNT_ESI_Other[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_ESI_Other[i]
+				num = objs[o].listOP_BaseDG_NumOps_ESI_Other[i]
 				mod = objs[o].listOP_BaseDG_Module_ESI_Other[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #"# Other Dispatcher Gadgets for ESI "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#"# Grand total Other Dispatcher Gadgets for ESI: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
- 
-def printListDG_Other_EBP( NumOpsDis,dg):	
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
+
+
+def printListDG_Other_EBP(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget Other EBP"
+	lock = False
 	global o
+	o=0
 	clearHashChecker()
 	counterReset()
-	idval = 1
-	while os.path.exists("%s-DG_DISPATCHER_Other_EBP_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName  +"-DG_DISPATCHER_Other_EBP_" + str(idval) + ".txt"
-	global fname
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_EBP_Other.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_EBP_Other.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_EBP_Other[i]
 				cnt = objs[o].listOP_BaseDG_CNT_EBP_Other[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_EBP_Other[i]
+				num = objs[o].listOP_BaseDG_NumOps_EBP_Other[i]
 				mod = objs[o].listOP_BaseDG_Module_EBP_Other[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #"# Other Dispatcher Gadgets for EBP "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#"# Grand total Other Dispatcher Gadgets for EBP: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
 
-def printListDG_Other_ESP( NumOpsDis,dg):	
+
+def printListDG_Other_ESP(NumOpsDis, Reg):
+	global printPop
+	global directory
+	global printStyle
+	operation="Dispatcher Gadget Other ESP"
+	lock = False
 	global o
+	o=0
 	clearHashChecker()
 	counterReset()
-	idval = 1
-	while os.path.exists("%s-DG_DISPATCHER_Other_ESP_%s.txt" % (peName, idval)):
-	    idval += 1
-	filename = peName  +"-DG_DISPATCHER_Other_ESP_" + str(idval) + ".txt"
-	global fname
-	global fname
-	fname= filename
-	with open(filename, 'a') as f:
-		i=0
-		temp = []
-		total = 0
-		for obj in objs:
-			num = objs[o].listOP_BaseDG_Module_ESP_Other.__len__()  #was cnt
-			for i in range (num): #ibid
-				addy =0x00
-				cnt = 0    #
+	i=0
+	o=0
+	for obj in objs:
+		if Reg != "0":
+			cnt1 = objs[o].listOP_BaseDG_ESP_Other.__len__()
+		for i in range (cnt1):
+			addy =0
+			cnt = 0   #
+			num = 0
+			if Reg != "0":
 				addy = objs[o].listOP_BaseDG_ESP_Other[i]
 				cnt = objs[o].listOP_BaseDG_CNT_ESP_Other[i]
-				nOppsVal = objs[o].listOP_BaseDG_NumOps_ESP_Other[i]
+				num = objs[o].listOP_BaseDG_NumOps_ESP_Other[i]
 				mod = objs[o].listOP_BaseDG_Module_ESP_Other[i]
-				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
-				cat = disHereClean3(addy, cnt, nOppsVal, dg)
-				if not cat == " ":
-					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+			out = str(mod) + "\t[Ops: " + str(hex(num)) + "]\t" 
+			cat = disHereClean3(addy, cnt, num, "jmp")
+			if (not cat == " " ) &  (not checkMitigationSkip()) & (not checkBadCharSkip(addy)):
+				if printStyle:
+					cat0 = "\n*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^\n"
 					counter()
-					print >> f, Ct () + "\t" + out
-					print >> f, cat
-			if num > 0:
-				out = "\nJOP ROCKET" #"# Other Dispatcher Gadgets for ESP "  + str(mod) + " total: " + Ct2()
-				temp.append(out)
-			total = total + num	
-			o = o + 1
-		for out in temp:
-			#print out
-			print >> f, out
-		out = ""#"# Grand total Other Dispatcher Gadgets for ESP: " + str(total)
-		#print out
-		print >> f, out
-	o = 0
-	counterReset()
-	clearGOuts()
-	nope(filename, total)
+					cat0+= Ct () + "\t" + out + showCurrentMitigation()
+					cat=cat0+ cat
+				if not printStyle:
+					cat=cat+showCurrentMitigation()
+				saveDirectory(directory, peName, Reg, operation, cat,lock)
+				lock=True			
+		o = o + 1
+		clearGOuts()
+o = 0
+
+# def printListDG_Other_EAX( NumOpsDis,dg):	
+# 	global o
+# 	clearHashChecker()
+# 	counterReset()
+# 	idval = 1
+# 	while os.path.exists("%s-DG_DISPATCHER_Other_EAX_%s.txt" % (peName, idval)):
+# 	    idval += 1
+# 	filename = peName  +"-DG_DISPATCHER_Other_EAX_" + str(idval) + ".txt"
+# 	global fname
+# 	global fname
+# 	fname= filename
+# 	o=0
+# 	with open(filename, 'a') as f:
+# 		i=0
+# 		temp = []
+# 		total = 0
+# 		for obj in objs:
+# 			num = objs[o].listOP_BaseDG_Module_EAX_Other.__len__()  #was cnt
+# 			for i in range (num): #ibid
+# 				addy =0x00
+# 				cnt = 0    #
+# 				addy = objs[o].listOP_BaseDG_EAX_Other[i]
+# 				cnt = objs[o].listOP_BaseDG_CNT_EAX_Other[i]
+# 				nOppsVal = objs[o].listOP_BaseDG_NumOps_EAX_Other[i]
+# 				mod = objs[o].listOP_BaseDG_Module_EAX_Other[i]
+# 				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
+# 				cat = disHereClean3(addy, cnt, nOppsVal, dg)
+# 				if not cat == " ":
+# 					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+# 					counter()
+# 					print >> f, Ct () + "\t" + out
+# 					print >> f, cat
+# 			if num > 0:
+# 				out = "\nJOP ROCKET" #"# Other Dispatcher Gadgets for EAX "  + str(mod) + " total: " + Ct2()
+# 				temp.append(out)
+# 			total = total + num	
+# 			o = o + 1
+# 		for out in temp:
+# 			#print out
+# 			print >> f, out
+# 		out = ""#"# Grand total Other Dispatcher Gadgets for EAX: " + str(total)
+# 		#print out
+# 		print >> f, out
+# 	o = 0
+# 	counterReset()
+# 	clearGOuts()
+# 	nope(filename, total)
+
+# def printListDG_Other_EBX( NumOpsDis,dg):	
+# 	global o
+# 	clearHashChecker()
+# 	counterReset()
+# 	idval = 1
+# 	o=0
+# 	while os.path.exists("%s-DG_DISPATCHER_Other_EBX_%s.txt" % (peName, idval)):
+# 	    idval += 1
+# 	filename = peName  +"-DG_DISPATCHER_Other_EBX_" + str(idval) + ".txt"
+# 	global fname
+# 	global fname
+# 	fname= filename
+# 	with open(filename, 'a') as f:
+# 		i=0
+# 		temp = []
+# 		total = 0
+# 		for obj in objs:
+# 			num = objs[o].listOP_BaseDG_Module_EBX_Other.__len__()  #was cnt
+# 			for i in range (num): #ibid
+# 				addy =0x00
+# 				cnt = 0    #
+# 				addy = objs[o].listOP_BaseDG_EBX_Other[i]
+# 				cnt = objs[o].listOP_BaseDG_CNT_EBX_Other[i]
+# 				nOppsVal = objs[o].listOP_BaseDG_NumOps_EBX_Other[i]
+# 				mod = objs[o].listOP_BaseDG_Module_EBX_Other[i]
+# 				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
+# 				cat = disHereClean3(addy, cnt, nOppsVal, dg)
+# 				if not cat == " ":
+# 					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+# 					counter()
+# 					print >> f, Ct () + "\t" + out
+# 					print >> f, cat
+# 			if num > 0:
+# 				out = "\nJOP ROCKET" #"# Other Dispatcher Gadgets for EBX "  + str(mod) + " total: " + Ct2()
+# 				temp.append(out)
+# 			total = total + num	
+# 			o = o + 1
+# 		for out in temp:
+# 			#print out
+# 			print >> f, out
+# 		out = ""#"# Grand total Other Dispatcher Gadgets for EBX: " + str(total)
+# 		#print out
+# 		print >> f, out
+# 	o = 0
+# 	counterReset()
+# 	clearGOuts()
+# 	nope(filename, total)
+ 
+# def printListDG_Other_ECX( NumOpsDis,dg):	
+# 	global o
+# 	clearHashChecker()
+# 	counterReset()
+# 	o=0
+# 	idval = 1
+# 	while os.path.exists("%s-DG_DISPATCHER_Other_ECX_%s.txt" % (peName, idval)):
+# 	    idval += 1
+# 	filename = peName  +"-DG_DISPATCHER_Other_ECX_" + str(idval) + ".txt"
+# 	global fname
+# 	global fname
+# 	fname= filename
+# 	with open(filename, 'a') as f:
+# 		i=0
+# 		temp = []
+# 		total = 0
+# 		for obj in objs:
+# 			num = objs[o].listOP_BaseDG_Module_ECX_Other.__len__()  #was cnt
+# 			for i in range (num): #ibid
+# 				addy =0x00
+# 				cnt = 0    #
+# 				addy = objs[o].listOP_BaseDG_ECX_Other[i]
+# 				cnt = objs[o].listOP_BaseDG_CNT_ECX_Other[i]
+# 				nOppsVal = objs[o].listOP_BaseDG_NumOps_ECX_Other[i]
+# 				mod = objs[o].listOP_BaseDG_Module_ECX_Other[i]
+# 				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
+# 				cat = disHereClean3(addy, cnt, nOppsVal, dg)
+# 				if not cat == " ":
+# 					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+# 					counter()
+# 					print >> f, Ct () + "\t" + out
+# 					print >> f, cat
+# 			if num > 0:
+# 				out = "\nJOP ROCKET" #"# Other Dispatcher Gadgets for ECX "  + str(mod) + " total: " + Ct2()
+# 				temp.append(out)
+# 			total = total + num	
+# 			o = o + 1
+# 		for out in temp:
+# 			#print out
+# 			print >> f, out
+# 		out = ""#"# Grand total Other Dispatcher Gadgets for ECX: " + str(total)
+# 		#print out
+# 		print >> f, out
+# 	o = 0
+# 	counterReset()
+# 	clearGOuts()
+# 	nope(filename, total)
+ 
+# def printListDG_Other_EDX( NumOpsDis,dg):	
+# 	global o
+# 	clearHashChecker()
+# 	counterReset()
+# 	idval = 1
+# 	o=0
+# 	while os.path.exists("%s-DG_DISPATCHER_Other_EDX_%s.txt" % (peName, idval)):
+# 	    idval += 1
+# 	filename = peName  +"-DG_DISPATCHER_Other_EDX_" + str(idval) + ".txt"
+# 	global fname
+# 	global fname
+# 	fname= filename
+# 	with open(filename, 'a') as f:
+# 		i=0
+# 		temp = []
+# 		total = 0
+# 		for obj in objs:
+# 			num = objs[o].listOP_BaseDG_Module_EDX_Other.__len__()  #was cnt
+# 			for i in range (num): #ibid
+# 				addy =0x00
+# 				cnt = 0    #
+# 				addy = objs[o].listOP_BaseDG_EDX_Other[i]
+# 				cnt = objs[o].listOP_BaseDG_CNT_EDX_Other[i]
+# 				nOppsVal = objs[o].listOP_BaseDG_NumOps_EDX_Other[i]
+# 				mod = objs[o].listOP_BaseDG_Module_EDX_Other[i]
+# 				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
+# 				cat = disHereClean3(addy, cnt, nOppsVal, dg)
+# 				if not cat == " ":
+# 					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+# 					counter()
+# 					print >> f, Ct () + "\t" + out
+# 					print >> f, cat
+# 			if num > 0:
+# 				out = "\nJOP ROCKET" #"# Other Dispatcher Gadgets for EDX "  + str(mod) + " total: " + Ct2()
+# 				temp.append(out)
+# 			total = total + num	
+# 			o = o + 1
+# 		for out in temp:
+# 			#print out
+# 			print >> f, out
+# 		out = ""#"# Grand total Other Dispatcher Gadgets for EDX: " + str(total)
+# 		#print out
+# 		print >> f, out
+# 	o = 0
+# 	counterReset()
+# 	clearGOuts()
+# 	nope(filename, total)
+ 
+# def printListDG_Other_EDI( NumOpsDis,dg):	
+# 	global o
+# 	clearHashChecker()
+# 	counterReset()
+# 	o=0
+# 	idval = 1
+# 	while os.path.exists("%s-DG_DISPATCHER_Other_EDI_%s.txt" % (peName, idval)):
+# 	    idval += 1
+# 	filename = peName  +"-DG_DISPATCHER_Other_EDI_" + str(idval) + ".txt"
+# 	global fname
+# 	global fname
+# 	fname= filename
+# 	with open(filename, 'a') as f:
+# 		i=0
+# 		temp = []
+# 		total = 0
+# 		for obj in objs:
+# 			num = objs[o].listOP_BaseDG_Module_EDI_Other.__len__()  #was cnt
+# 			for i in range (num): #ibid
+# 				addy =0x00
+# 				cnt = 0    #
+# 				addy = objs[o].listOP_BaseDG_EDI_Other[i]
+# 				cnt = objs[o].listOP_BaseDG_CNT_EDI_Other[i]
+# 				nOppsVal = objs[o].listOP_BaseDG_NumOps_EDI_Other[i]
+# 				mod = objs[o].listOP_BaseDG_Module_EDI_Other[i]
+# 				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
+# 				cat = disHereClean3(addy, cnt, nOppsVal, dg)
+# 				if not cat == " ":
+# 					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+# 					counter()
+# 					print >> f, Ct () + "\t" + out
+# 					print >> f, cat
+# 			if num > 0:
+# 				out = "\nJOP ROCKET" #"# Other Dispatcher Gadgets for EDI "  + str(mod) + " total: " + Ct2()
+# 				temp.append(out)
+# 			total = total + num	
+# 			o = o + 1
+# 		for out in temp:
+# 			#print out
+# 			print >> f, out
+# 		out = ""#"# Grand total Other Dispatcher Gadgets for EDI: " + str(total)
+# 		#print out
+# 		print >> f, out
+# 	o = 0
+# 	counterReset()
+# 	clearGOuts()
+# 	nope(filename, total)
+ 
+# def printListDG_Other_ESI( NumOpsDis,dg):	
+# 	global o
+# 	clearHashChecker()
+# 	counterReset()
+# 	o=0
+# 	idval = 1
+# 	while os.path.exists("%s-DG_DISPATCHER_Other_ESI_%s.txt" % (peName, idval)):
+# 	    idval += 1
+# 	filename = peName  +"-DG_DISPATCHER_Other_ESI_" + str(idval) + ".txt"
+# 	global fname
+# 	global fname
+# 	fname= filename
+# 	with open(filename, 'a') as f:
+# 		i=0
+# 		temp = []
+# 		total = 0
+# 		for obj in objs:
+# 			num = objs[o].listOP_BaseDG_Module_ESI_Other.__len__()  #was cnt
+# 			for i in range (num): #ibid
+# 				addy =0x00
+# 				cnt = 0    #
+# 				addy = objs[o].listOP_BaseDG_ESI_Other[i]
+# 				cnt = objs[o].listOP_BaseDG_CNT_ESI_Other[i]
+# 				nOppsVal = objs[o].listOP_BaseDG_NumOps_ESI_Other[i]
+# 				mod = objs[o].listOP_BaseDG_Module_ESI_Other[i]
+# 				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
+# 				cat = disHereClean3(addy, cnt, nOppsVal, dg)
+# 				if not cat == " ":
+# 					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+# 					counter()
+# 					print >> f, Ct () + "\t" + out
+# 					print >> f, cat
+# 			if num > 0:
+# 				out = "\nJOP ROCKET" #"# Other Dispatcher Gadgets for ESI "  + str(mod) + " total: " + Ct2()
+# 				temp.append(out)
+# 			total = total + num	
+# 			o = o + 1
+# 		for out in temp:
+# 			#print out
+# 			print >> f, out
+# 		out = ""#"# Grand total Other Dispatcher Gadgets for ESI: " + str(total)
+# 		#print out
+# 		print >> f, out
+# 	o = 0
+# 	counterReset()
+# 	clearGOuts()
+# 	nope(filename, total)
+ 
+# def printListDG_Other_EBP( NumOpsDis,dg):	
+# 	global o
+# 	clearHashChecker()
+# 	counterReset()
+# 	idval = 1
+# 	o=0
+# 	while os.path.exists("%s-DG_DISPATCHER_Other_EBP_%s.txt" % (peName, idval)):
+# 	    idval += 1
+# 	filename = peName  +"-DG_DISPATCHER_Other_EBP_" + str(idval) + ".txt"
+# 	global fname
+# 	global fname
+# 	fname= filename
+# 	with open(filename, 'a') as f:
+# 		i=0
+# 		temp = []
+# 		total = 0
+# 		for obj in objs:
+# 			num = objs[o].listOP_BaseDG_Module_EBP_Other.__len__()  #was cnt
+# 			for i in range (num): #ibid
+# 				addy =0x00
+# 				cnt = 0    #
+# 				addy = objs[o].listOP_BaseDG_EBP_Other[i]
+# 				cnt = objs[o].listOP_BaseDG_CNT_EBP_Other[i]
+# 				nOppsVal = objs[o].listOP_BaseDG_NumOps_EBP_Other[i]
+# 				mod = objs[o].listOP_BaseDG_Module_EBP_Other[i]
+# 				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
+# 				cat = disHereClean3(addy, cnt, nOppsVal, dg)
+# 				if not cat == " ":
+# 					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+# 					counter()
+# 					print >> f, Ct () + "\t" + out
+# 					print >> f, cat
+# 			if num > 0:
+# 				out = "\nJOP ROCKET" #"# Other Dispatcher Gadgets for EBP "  + str(mod) + " total: " + Ct2()
+# 				temp.append(out)
+# 			total = total + num	
+# 			o = o + 1
+# 		for out in temp:
+# 			#print out
+# 			print >> f, out
+# 		out = ""#"# Grand total Other Dispatcher Gadgets for EBP: " + str(total)
+# 		#print out
+# 		print >> f, out
+# 	o = 0
+# 	counterReset()
+# 	clearGOuts()
+# 	nope(filename, total)
+
+# def printListDG_Other_ESP( NumOpsDis,dg):	
+# 	global o
+# 	clearHashChecker()
+# 	counterReset()
+# 	idval = 1
+# 	o=0
+# 	while os.path.exists("%s-DG_DISPATCHER_Other_ESP_%s.txt" % (peName, idval)):
+# 	    idval += 1
+# 	filename = peName  +"-DG_DISPATCHER_Other_ESP_" + str(idval) + ".txt"
+# 	global fname
+# 	global fname
+# 	fname= filename
+# 	with open(filename, 'a') as f:
+# 		i=0
+# 		temp = []
+# 		total = 0
+# 		for obj in objs:
+# 			num = objs[o].listOP_BaseDG_Module_ESP_Other.__len__()  #was cnt
+# 			for i in range (num): #ibid
+# 				addy =0x00
+# 				cnt = 0    #
+# 				addy = objs[o].listOP_BaseDG_ESP_Other[i]
+# 				cnt = objs[o].listOP_BaseDG_CNT_ESP_Other[i]
+# 				nOppsVal = objs[o].listOP_BaseDG_NumOps_ESP_Other[i]
+# 				mod = objs[o].listOP_BaseDG_Module_ESP_Other[i]
+# 				out = "Ops: " + str(nOppsVal) + "\tMod: " + str(mod)
+# 				cat = disHereClean3(addy, cnt, nOppsVal, dg)
+# 				if not cat == " ":
+# 					print >> f, "*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^*^"
+# 					counter()
+# 					print >> f, Ct () + "\t" + out
+# 					print >> f, cat
+# 			if num > 0:
+# 				out = "\nJOP ROCKET" #"# Other Dispatcher Gadgets for ESP "  + str(mod) + " total: " + Ct2()
+# 				temp.append(out)
+# 			total = total + num	
+# 			o = o + 1
+# 		for out in temp:
+# 			#print out
+# 			print >> f, out
+# 		out = ""#"# Grand total Other Dispatcher Gadgets for ESP: " + str(total)
+# 		#print out
+# 		print >> f, out
+# 	o = 0
+# 	counterReset()
+# 	clearGOuts()
+# 	nope(filename, total)
 
 def get_Total_ADD_EAX():
 	global total2
@@ -25715,7 +29387,7 @@ def findwwmemmove(a):
 				if a == 0:
 					return str(fixHexAddy(FoundApisAddress[i]) ), True
 
-	t= "0xdeadc0de, # Pointers to memcpy, wmemcpy not found"
+	t= "0xdeadc0de) # Pointers to memcpy, wmemcpy not found"
 	if a == 1:
 		return t, False
 	if a == 0:
@@ -25724,6 +29396,14 @@ def findwwmemmove(a):
 def fixHexAddy(addy):
 	str_hexnum =  addy.rstrip("L").lstrip("0x") or "0"
 	return '0x' + '0'* (8 - len(str_hexnum)) + str_hexnum
+
+def fixHexAddyWord(addy):
+	try:
+		str_hexnum =  addy.rstrip("L").lstrip("0x") or "0"
+		return '0x' + '0'* (4 - len(str_hexnum)) + str_hexnum
+	except:
+		str_hexnum =  addy.rstrip("L").lstrip("0x") or "0"    # not expected
+		return '0x' + '0'* (6 - len(str_hexnum)) + str_hexnum
 
 def findGetProcessAddress(a):
 	global GPAl
@@ -25788,9 +29468,9 @@ def paddingMakerVP_Stack(a):
 	except:
 		modb=0
 	instr="42"*int(a)
-	text=b*"vp_stack = struct.pack('<L', 0x42424242) # filler | 4 bytes\n"
+	text=b*"vp_stack = struct.pack('<L', 0x42424242) # Compensatory filler | 4 bytes\n"
 	if modb >0:
-		text2=modb*"vp_stack = struct.pack('<L', 0x"+modb*"43"+") \t# filler | " + str(modb) + " bytes\n"
+		text2=modb*"vp_stack = struct.pack('<L', 0x"+modb*"43"+") \t# Compensatory filler | " + str(modb) + " bytes\n"
 		text +=text2
 	return text
 def paddingMakerDG_Stack(a):
@@ -25840,21 +29520,26 @@ def FinalVP(Reg, numDistinctPivots):
 	out="\n* * * * * * * * * * * * * * * * * * * * * * * * * * * *\n# VirtualProtect() JOP chain set up for functional gadgets ending in Jmp/Call " + Reg+ " " + vpCt()+"\n"
 	out+="\n\nimport struct\n"
 	# out+="\n\n\t#Need set up for JOP dispatcher gadget -- not provided\n\n"
-	dgOut,dgBytesNeeded=preLoad(Reg)
+	dgOut,dgBytesNeeded, DG, dgFound=preLoad(Reg)
 	out += ""+ dgOut
 	
 	# print "dbytes " + str(dgBytesNeeded)
 	try:
 		stackFiller=dgBytesNeeded
 		if dgBytesNeeded==0:
-			stackFiller=4
+			# stackFiller=4
+			stackFiller=dgBytesNeeded
 		# print "yes"
 	except:
 		# print ""
 		stackFiller=4
-	stackPivotInsertFiller(paddingMaker1(stackFiller))
+	stackPivotInsertFiller(paddingMaker1_var(stackFiller, dgFound))
 
 	out += "\n\ndef create_jop_chain():\n"
+	# out += "\n\tJOP_Pad = " + "bytearray(b'\\x41'*" + str(stackFiller) + ") # " + str(stackFiller) + " bytes padding\n"
+	
+	# out +=str(dgBytesNeeded) + " dgbytesneeded\n" + str(stackFiller) + " stackfiller \n"
+	#dv1
 	out += "\tjop_gadgets = [\n"
 	try:
 		outVPtasks, truth = doVPVAtasks(numDistinctPivots)
@@ -25866,13 +29551,16 @@ def FinalVP(Reg, numDistinctPivots):
 	except:
 		out += "# Need stack pivots - none were found"
 	# out += paddingMaker4Bytes(2,2)
-	out +=""+paddingMaker1(stackFiller)
+	out +=""+paddingMaker1DG(stackFiller, dgFound)
+	# out +="\t\tJOP_Pad, # 	 padding for dispatch table\n"
 	gadget, gadgetBytesNeeded, popReg = findVPVAPop(Reg)
 	# print "findvpgadget"
 	# print gadget
 	out += "\t\t"+gadget + "# Set up pop for VP "
 	out += "\t\t# Need " + str(gadgetBytesNeeded) +" bytes filler, for what was done after pop " + popReg + "\n"
 	# do do -- compensatory pop
+	# out += "\t\tJOP_Pad, # 	 padding for dispatch table\n"
+	out +=""+paddingMaker1DG(stackFiller, dgFound)
 	try:
 		out +=  "\t\t"+preprocessOP_JMPPTR(NumOpsD, popReg) + " # JMP to ptr for VirtualProtect\n"
 	except:
@@ -25882,11 +29570,14 @@ def FinalVP(Reg, numDistinctPivots):
 	out += "\treturn ''.join(struct.pack('<I', _) for _ in jop_gadgets)\n\n"
 	out += "rop_chain=create_rop_chain()\n"
 	out += "jop_chain=create_jop_chain()\n\n"
-
+	dgSubCheck = re.search( r'sub|sbb', DG, re.M|re.I)
+	if dgSubCheck:
+   		out += "jop_chain = jop_chain[::-1] # Reversing JOP chain because of SUB, not ADD!\n"
+	
 	out += "vp_stack = struct.pack('<L', " + findVirtualProtect(0) + ") # ptr -> VirtualProtect()\n" 
 
 	if (gadgetBytesNeeded > 0):
-		out +=  paddingMakerVP_Stack(gadgetBytesNeeded) + " Padding for extra pop(s)"
+		out +=  paddingMakerVP_Stack(gadgetBytesNeeded)
 	out += "vp_stack += struct.pack('<L', 0x0042DEAD) # return address  <-- where you want it to return\n" 
 	out += "vp_stack += struct.pack('<L', 0x00425000) # lpAddress  <-- Where you want to start modifying proctection\n"  
 	out += "vp_stack += struct.pack('<L', 0x000003e8) # dwsize  <-- Size: 1000\n" 
@@ -25895,7 +29586,7 @@ def FinalVP(Reg, numDistinctPivots):
 	out += "shellcode = '\\xcc\\xcc\\xcc\\xcc'\n" 
 	out += "nops = '\\x90' * 1\n" 
 	out += "padding = '\\x41' * 1\n\n" 
-	out += "payload = padding + ropchain + jop_chain + vp_stack + nops + shellcode\t# Payload set up may vary greatly\n\n# This was created by the JOP ROCKET\n\n"
+	out += "payload = padding + rop_chain + jop_chain + vp_stack + nops + shellcode\t# Payload set up may vary greatly\n\n# This was created by the JOP ROCKET\n\n"
 
 
 	if (truth == False) & (save3 > 0):
@@ -25913,6 +29604,7 @@ def FinalVP(Reg, numDistinctPivots):
 	return out
 
 def callstoVP():
+	global directory
 	Regs =["EAX", "ECX","EBX","EDI"]
 	RegsPrint = ["EDX"]
 	findEvilImports()
@@ -25921,9 +29613,9 @@ def callstoVP():
 	print "VP: " + str(findVirtualProtect(1))
 
 	idval=1
-	while os.path.exists("%s-VirtualProtect_%s.txt" % (peName, idval)):
+	while os.path.exists("%s%s-VirtualProtect_%s.txt" % (directory, peName, idval)):
 	    idval += 1
-	filename = peName +"-"+"VirtualProtect_" + str(idval) + ".txt"
+	filename = directory+ peName +"-"+"VirtualProtect_" + str(idval) + ".txt"
 
 	with open(filename, 'a') as f:
 		# print >> f, FinalVP(Reg)
@@ -25953,10 +29645,16 @@ def preLoad(Reg):
 	out += "\ndef create_rop_chain():\n"
 	out += "\trop_gadgets = [\n"
 	dispatcherReg, drbytes = calcRegforDispatcher(Reg)
-	dTable, dtbytes, dtReg =  calcRegforDispatchTable(Reg)	
+	dgPreT, dgPreReg=preprocessOP_DGPre(Reg)
+	# print ("DGpre", dgPreT, dgPreReg)
+	# print ("**calcRegforDispatcher", dispatcherReg, drbytes)
+	dTable, dtbytes, dtReg =  calcRegforDispatchTable(Reg, dgPreReg)	
+	# print ("***calcRegforDispatchTable", dTable,dtbytes,dtReg)
+	
 	truth, DG, dgBytes = preprocessOP_DG(NumOpsD, dtReg)
-
+	# print("****preprocessOP_DG", truth, DG, dgBytes)
 	# Set up dispatcher gadget
+	# print ("dispatcherReg", dispatcherReg, "drbytes", drbytes )
 	out +=  "\t\t"+dispatcherReg + "  Load " + Reg +  " with address for dispatcher gadget!\n"  # pop REG / ret -> load dispatcher
 	if truth:
 		out +=  "\t\t"+ DG + "\t#This is one possible dispatcher gadget, which may or may not be viable, with " +  str(dgBytes) +  " bytes between dispatch table slots!\n" #"0xdeadc0de) # Address for your dispatcher gadget!\n"
@@ -25980,7 +29678,7 @@ def preLoad(Reg):
 
 
 	
-	return out, dgBytes
+	return out, dgBytes, DG, truth
 
 	
 
@@ -25995,21 +29693,22 @@ def FinalVA(Reg, numDistinctPivots):
 	out="\n* * * * * * * * * * * * * * * * * * * * * * * * * * * *\n# VirtualAlloc() JOP chain set up for functional gadgets ending in Jmp/Call " + Reg+ " " + vaCt() + "\n"
 	out+="\n\nimport struct\n"
 	# out+="\n\n\t#Need set up for JOP dispatcher gadget -- not provided\n\n"
-	dgOut,dgBytesNeeded=preLoad(Reg)
+	dgOut,dgBytesNeeded, DG, dgFound=preLoad(Reg)
 	out += ""+ dgOut
 	
 	# print "dbytes " + str(dgBytesNeeded)
 	try:
 		stackFiller=dgBytesNeeded
 		if dgBytesNeeded==0:
-			stackFiller=4
-		# print "yes"
+			# stackFiller=4
+			stackFiller=dgBytesNeeded
 	except:
-		# print ""
 		stackFiller=4
-	stackPivotInsertFiller(paddingMaker1(stackFiller))
+	stackPivotInsertFiller(paddingMaker1_var(stackFiller, dgFound))
 
 	out += "\n\ndef create_jop_chain():\n"
+	# out += "\n\tJOP_Pad = " + "bytearray(b'\\x41'*" + str(stackFiller) + ") # " + str(stackFiller) + " bytes padding\n"
+	
 	out += "\tjop_gadgets = [\n"
 	try:
 		outVPtasks, truth = doVPVAtasks(numDistinctPivots)
@@ -26021,13 +29720,17 @@ def FinalVA(Reg, numDistinctPivots):
 		
 	except:
 		out += "# Need stack pivots - none were found"
-	out +=""+paddingMaker1(stackFiller)
+	# out +=""+paddingMaker1(stackFiller)
+	# out += "\t\tJOP_Pad, # 	 padding for dispatch table\n"
+	out +=""+paddingMaker1DG(stackFiller, dgFound)
 	gadget, gadgetBytesNeeded, popReg = findVPVAPop(Reg)
 	# print "findvpgadget"
 	# print gadget
 	out += "\t\t"+gadget + "# Set up pop for VP "
 	out += "\t\t# Need " + str(gadgetBytesNeeded) +" bytes filler, for what was done after pop " + popReg + "\n"
 	# do do -- compensatory pop
+	# out += "\t\tJOP_Pad, # 	 padding for dispatch table\n"
+	out +=""+paddingMaker1DG(stackFiller, dgFound)
 	try:
 		out +=  "\t\t"+preprocessOP_JMPPTR(NumOpsD, popReg) + " # JMP to ptr for VirtualAlloc\n"
 	except:
@@ -26037,28 +29740,31 @@ def FinalVA(Reg, numDistinctPivots):
 	out += "\treturn ''.join(struct.pack('<I', _) for _ in jop_gadgets)\n\n"
 	out += "rop_chain=create_rop_chain()\n"
 	out += "jop_chain=create_jop_chain()\n\n"
+	dgSubCheck = re.search( r'sub|sbb', DG, re.M|re.I)
+	if dgSubCheck:
+   		out += "jop_chain = jop_chain[::-1] # Reversing JOP chain because of SUB, not ADD!\n"
 
 	tempVA, tr1 = findVirtualAlloc(0)
 	tempMem, tr2 =findMemcpy(0)
 
-	out += "vp_stack = struct.pack('<L', " +tempVA + ") # ptr -> VirtualAlloc()\n" 
+	out += "vp_stack = struct.pack('<L', " +tempVA + ") # ptr -> VirtualAlloc()\n\n" 
 
 	if (gadgetBytesNeeded > 0):
-		out += ""	+ paddingMakerVP_Stack(gadgetBytesNeeded) + " Padding for extra pop(s)"
+		out += ""	+ paddingMakerVP_Stack(gadgetBytesNeeded) 
 
-	out += "vp_stack += struct.pack('<L', " + tempMem + ") # return address  <-- where you want it to return - here we are chaining it together with memcpy\n" 
+	out += "vp_stack += struct.pack('<L', " + tempMem + " # return address  <-- where you want it to return - here we are chaining it together with memcpy\n" 
 	out += "vp_stack += struct.pack('<L', 0x00625000) # lpAddress  <-- Where you want to start modifying protection\n"  
 	out += "vp_stack += struct.pack('<L', 0x000003e8) # dwsize  <-- Size: 1000\n" 
 	out += "vp_stack += struct.pack('<L', 0x00001000) # flAllocationType <-- 100, MEM_COMMIT\n" 
 	out += "vp_stack += struct.pack('<L', 0x00000040) # flProtect <--RWX, PAGE_EXECUTE_READWRITE\n"
 	out += "vp_stack += struct.pack('<L', 0x00625000) # *Same* address as lpAddress--where the execution jumps after memcpy()\n"
-	out += "vp_stack += struct.pack('<L', 0x00625000) # *Same* address as lpAddress--i.e. desination address for memcpy()"
+	out += "vp_stack += struct.pack('<L', 0x00625000) # *Same* address as lpAddress--i.e. desination address for memcpy()\n"
 	out += "vp_stack += struct.pack('<L', 0xffffdddd) # memcpy() destination address--i.e. Source address for shellcode\n" 
 	out += "vp_stack += struct.pack('<L', 0x00002000) # mempcpy() size parameter--size of shellcode \n#This is one possible VirtualAlloc() chain; other possibilities exist!\n\n" 
 	out += "shellcode = '\\xcc\\xcc\\xcc\\xcc' # '\\xcc' is a breakpoint.\n"  
 	out += "nops = '\\x90' * 1\n" 
 	out += "padding = '\\x41' * 1\n\n" 
-	out += "payload = padding + ropchain + jop_chain + vp_stack + nops + shellcode\t# Payload set up may vary greatly\n\n# This was created by the JOP ROCKET.\n\n"
+	out += "payload = padding + rop_chain + jop_chain + vp_stack + nops + shellcode\t# Payload set up may vary greatly\n\n# This was created by the JOP ROCKET.\n\n"
 
 	if (truth == False) & (save3 > 0):
 		out="\t# JOP chain generation skipped for VirtualAlloc--No stack pivots found"
@@ -26226,6 +29932,8 @@ def findVPVAPop(Reg):
 	# print "True final:"
 	# print gadget
 	# print gadgetBytesNeeded
+	if gadgetBytesNeeded != 0:
+		gadgetBytesNeeded = gadgetBytesNeeded-4
 	return gadget, gadgetBytesNeeded, popReg
 
 
@@ -26561,20 +30269,118 @@ def checkBadChar(addy):
 					badChar4 = re.match( badChars[x], addy[8:10] , re.M|re.I)
 					if badChar4:
 						#print "ending 4"
-						return False
-					else:
-					#	print "No bad"
-						answer = False 
+						return False		 
 		x +=1
-	# print "bad char debugging output:"
-	# print addy[0:2] 
-	# print addy[2:4]
-	# print addy[4:6] 
-	# print addy[6:8]
-	# print addy[8:10]
-
 	#prints True if FREE of all bad chars
 	return True
+
+
+
+def checkBadChar2():
+	global badChars
+	global addy
+	global offsetStyle
+	if not offsetStyle:
+		addy= fixHexAddyWord(str(hex(addy)))[2:]
+	if offsetStyle:
+		addy=fixHexAddy(str(hex(addy)))[2:]
+	print (addy)
+	x=0
+	for each in badChars:
+#		print "bad char " + str( badChars[x])
+		badChar1 = re.match( badChars[x], addy[2:4] , re.M|re.I)
+		if badChar1:
+			return False
+		else:
+			badChar2 = re.match( badChars[x], addy[4:6] , re.M|re.I)
+			if badChar2:
+				return False
+			else:
+				badChar3 = re.match( badChars[x], addy[6:8] , re.M|re.I)
+				if badChar3:
+					return False
+				else:
+					badChar4 = re.match( badChars[x], addy[8:10] , re.M|re.I)
+					if badChar4:
+						return False		 
+		x +=1
+	return True
+
+def addBadChar(bad):
+	global badChars
+	if bad.upper() not in badChars:
+		badChars.append(bad.upper())
+
+def getCurrentBadChars():
+	global badChars
+	myBad=""
+	t=0
+	for each in badChars:
+		myBad +=each +", "
+		t+=1
+		if t==18:
+			myBad+="\n"
+	myBad=myBad[:-2]
+	# print myBad
+	return myBad
+
+def setBadChars():  # all values for parameters are boolean
+	global badChars
+
+	out="\nCurrent bad characters:\n"
+	out+=getCurrentBadChars()+"\n"
+	out+="\t1 - Add bad chars\n"
+	out+="\t2 - Add 0d 0a 00\n"
+	out+="\t3 - Exit\n"
+	print (out)
+	cont = raw_input()
+	enterBad=False
+	while (True):
+		if cont == "1":
+			enterBad = True
+			break
+		if cont == "2":
+			addBadChar("0A")
+			addBadChar("0d")
+			addBadChar("00")
+			out="\nCurrent bad characters:\n"
+			out+=getCurrentBadChars()+"\n"
+			print (out)
+			break
+		if cont =="3":
+			break
+		else:
+			print ("Invalid response\n")
+			cont=raw_input()
+	
+	if enterBad:
+		out2="Enter bad chars:"
+		out2="\tDelimit input with spaces, e.g. 0d 0a 00"
+		ans=raw_input()
+		ans = ans.upper()	
+		ans2 = ans.split(' ')
+
+		# print ans2
+		t=0
+		for val in ans2:
+			ans2[t]=val.replace(' ', '')
+			t+=1	
+		# print ans2
+		t=0
+		while ("" in ans2):
+			ans2.remove("")
+		print ans2
+
+		for val in ans2:
+			try:
+				print val
+				if int(val,16) > -1 and (int(val,16) < 256):
+					if val not in badChars:
+						badChars.append(val)
+			except:
+				pass
+		print getCurrentBadChars()
+
 def finalPrintSub2(): 
 	global printemp
 	global printrareDG
@@ -26652,6 +30458,7 @@ def finalPrintSub2():
 	global printDispatcherEDIOther
 	global printDispatcherESIOther
 	global printDispatcherEBPOther
+	global printMitigations 
 	global o
 	global printStack
 	global printDeref
@@ -26668,14 +30475,15 @@ def finalPrintSub2():
 	t=0
 	try:
 		if printStack == True:
-			printlistOP_SP(NumOpsD, "All")
-			# printlistOP_SP3(NumOpsD, "All")
+			# printlistOP_SP(NumOpsD, "All")
+			printlistOP_SP3(NumOpsD, "All")
 			# print "done"
 	except:
 		nope3(fname)
 
 	try:
 		if printemp == True:
+			# print ("print empty")
 			printlistOP_JMP_PTR_EMPTY(NumOpsD)
 	except:
 		pass
@@ -26685,19 +30493,24 @@ def finalPrintSub2():
 	except:
 		pass
 
-		
+	try:
+		if printMitigations  == True:
+			printlistOP_Mitigations()
+
+	except:
+		pass		
 	for Reg in RegsPrint:  #For loop does not work properly without the try's. That is, if one subrountine cannot rune, the for loop would break, thereby not letting me do all it is supposed to do.
 		# print "global Reg: "  + Reg
-		printlistOP_Add(NumOpsD, Reg)
-		nope3(fname)
-		# try:
-		# 	print "try add " +  str(printAdd)
-		# 	if printAdd == True:
-		# 		print "in addd is true"
-		# 		sp()
-		# 		printlistOP_Add(NumOpsD, Reg)
-		# except:
-		# 	nope3(fname)
+		# printlistOP_Add(NumOpsD, Reg)
+		# nope3(fname)
+		try:
+			# print "try add " +  str(printAdd)
+			if printAdd == True:
+				# print "in addd is true"
+				# sp()
+				printlistOP_Add(NumOpsD, Reg)
+		except:
+			nope3(fname)
 		try:
 			if printSub == True:
 				printlistOP_Sub(NumOpsD, Reg)
@@ -27198,6 +31011,8 @@ def finalPrintSub2():
 		nope3(fname)
 
 
+		
+
 def d():
 	global Regs
 	global RegsPrint
@@ -27288,10 +31103,10 @@ def splash():
 	cat+="   |  | | |   | | (        | (\ (  | |   | | |     |  ( \ \| (        | |   \n"
 	cat+="|\_)  ) | (___) | )        | ) \ \_| (___) | (____/\  /  \ \ (____/\  | |   \n"
 	cat+="(____/  (_______)/         |/   \__(_______|_______/_/    \(_______/  )_(   \n"
-	cat+="\tJOP ROCKET: Honoring Ancient Rocket Cats Everywhere\tv2.01"
+	cat+="\tJOP ROCKET: Honoring Ancient Rocket Cats Everywhere\tv2.1"
 
 	print bomb+ cat1+cat
-	
+
 Extraction()
 #DoEverythingFunc()
 #CheckDoEverything()
@@ -27299,262 +31114,37 @@ Extraction()
 # testingDG()
 #print PEsList
 
-
-
+	
 splash()
 showOptions()
+# setMitigationsAvoidUI()
 UI()
 
+yes =9995
 
+if yes == 9992:
+	# get_OP_CALL_EDX(NumOpsD)
+	# get_OP_JMP_EDX(NumOpsD)
+	Regs =["EAX","EBX","ECX","EDX","ESI","EDI","EBP","ESP"]
+	getCALL = True
+	getJMP = True
+	# print ("enter R")
+	runIt()
+	printlistOP_JMP_PTR_EMPTY(NumOpsD)
+	printlistOP_MovDeref(NumOpsD, "EAX")
+	printlistOP_MovDeref(NumOpsD, "EBX")
+	printlistOP_MovDeref(NumOpsD, "ECX")
+	printlistOP_MovDeref(NumOpsD, "EDX")
+	printlistOP_MovDeref(NumOpsD, "EDI")
+	printlistOP_MovDeref(NumOpsD, "ESI")
+	printlistOP_MovDeref(NumOpsD, "EBP")
+	printlistOP_MovDeref(NumOpsD, "EBP")
+	print "done"
+if yes ==999:
 
+	# desired = 0x1120
+	# desiredMax = 0x1400
 
-# get_OP_JMP_PTR_OTHER_EAX(NumOpsD)
-
-# get_Dispatcher_G_Other(NumOpsD, Depth, "EAX")
-# printlistOP_DG_Rare(NumOpsD)
-
-
-# ptr()
-
-# get_OP_JMP_PTR_EBX(NumOpsD)
-
-# get_OP_JMP_PTR_OTHER_EAX(NumOpsD)
-# get_OP_JMP_PTR_OTHER_EBX(NumOpsD)
-# get_OP_JMP_PTR_OTHER_ECX(NumOpsD)
-# get_OP_JMP_PTR_OTHER_EDX(NumOpsD)
-# get_OP_JMP_PTR_OTHER_EDI(NumOpsD)
-# get_OP_JMP_PTR_OTHER_ESI(NumOpsD)
-# get_OP_JMP_PTR_OTHER_ESP(NumOpsD)
-# get_OP_JMP_PTR_OTHER_EBP(NumOpsD)
-
-# get_OP_JMP_PTR_EMPTY_EBX(NumOpsD)
-
-# printlistOP_JMP_PTR_OTHER_EAX(NumOpsD)
-
-
-# printlistOP_JMP_PTR_OTHER(NumOpsD)
-
-
-# print " ebx " + str(len(objs[o].listOP_JMP_PTR_OTHER_EBX_Module))
-# print " ecx " + str(len(objs[o].listOP_JMP_PTR_OTHER_ECX_Module))
-# print " edx " + str(len(objs[o].listOP_JMP_PTR_OTHER_EDX_Module))
-# print " esi " + str(len(objs[o].listOP_JMP_PTR_OTHER_ESI_Module))
-# print " edi " + str(len(objs[o].listOP_JMP_PTR_OTHER_EDI_Module))
-# print " esp " + str(len(objs[o].listOP_JMP_PTR_OTHER_ESP_Module))
-# print " ebp " + str(len(objs[o].listOP_JMP_PTR_OTHER_EBP_Module))
-
-# get_Dispatcher_G_Other(NumOpsD, Depth, "EAX")
-# get_Dispatcher_G_Other(NumOpsD, Depth, "EBX")
-# get_Dispatcher_G_Other(NumOpsD, Depth, "ECX")
-# get_Dispatcher_G_Other(NumOpsD, Depth, "EDX")
-# get_Dispatcher_G_Other(NumOpsD, Depth, "EDI")
-# get_Dispatcher_G_Other(NumOpsD, Depth, "ESI")
-# get_Dispatcher_G_Other(NumOpsD, Depth, "EBP")
-# get_Dispatcher_G_Other(NumOpsD, Depth, "ESP")
-
-# get_Dispatcher_G(NumOpsD, Depth, "EBX")
-
-
-# printListDG_EAX(NumOpsD,"dg")
-# nope3(fname)		
-# printListDG_EBX(NumOpsD,"dg")
-# nope3(fname)
-# printListDG_ECX(NumOpsD,"dg")
-# nope3(fname)
-# printListDG_EDX(NumOpsD,"dg")
-# nope3(fname)
-# printListDG_EDI(NumOpsD,"dg")
-# nope3(fname)
-# printListDG_ESI(NumOpsD,"dg")
-# nope3(fname)
-# printListDG_EBP(NumOpsD,"dg")
-# nope3(fname)
-# printListDG_BEST_EAX(NumOpsD,"jmp")
-# nope3(fname)    
-# printListDG_BEST_EBX(NumOpsD,"jmp")
-# nope3(fname)    
-# printListDG_BEST_ECX(NumOpsD,"dg") 
-# nope3(fname)   
-# printListDG_BEST_EDX(NumOpsD,"dg")
-# nope3(fname)    
-# printListDG_BEST_EDI(NumOpsD,"dg")
-# nope3(fname)    
-# printListDG_BEST_ESI(NumOpsD,"dg")
-# nope3(fname)    
-# printListDG_BEST_EBP(NumOpsD,"dg")
-# nope3(fname)    
-# printListDG_Other_EAX(NumOpsD,"dg")
-# nope3(fname)    
-# printListDG_Other_EBX(NumOpsD,"dg")
-# nope3(fname)    
-# printListDG_Other_ECX(NumOpsD,"dg")
-# nope3(fname)    
-# printListDG_Other_EDX(NumOpsD,"dg")
-# nope3(fname)    
-# printListDG_Other_EDI(NumOpsD,"dg")
-# nope3(fname)    
-# printListDG_Other_ESI(NumOpsD,"dg")
-# nope3(fname)    
-# printListDG_Other_EBP(NumOpsD,"dg")    
-# nope3(fname)    
-
-
-
-
-
-#start
-# c()
-# printlistOP_JMP_PTR_EMPTY(NumOpsD)
-
-
-# printlistOP_Pop(NumOpsD, "EAX")
-# printlistOP_Pop(NumOpsD, "EBX")
-# printlistOP_Pop(NumOpsD, "ECX")
-# printlistOP_Pop(NumOpsD, "EDX")
-# printlistOP_Pop(NumOpsD, "EDI")
-# printlistOP_Pop(NumOpsD, "ESI")
-# printlistOP_Pop(NumOpsD, "EBP")
-# printlistOP_Sub(NumOpsD, "EBP")
-# # findMS()
-
-# a1, a2 = findMemcpy(1)
-# a3, a4 = findVirtualAlloc(1)
-# print a1
-# print a3
-
-
-# UI()
-
-# get_OP_RET(NumOpsD)
-# newteste()
-# print len(	objs[o].listOP_RET)
-
-# printlistOP_RET(NumOpsD)
-
-# printlistOP_RET_POP(NumOpsD)
-# printlistOP_RET_POP_EDI(NumOpsD)
-# printlistOP_Ret_Pop(NumOpsD, "EAX")
-# printlistOP_Ret_Pop(NumOpsD, "EDI")
-# printlistOP_Ret_Pop(NumOpsD, "EAX")
-# printlistOP_Ret_Pop(NumOpsD, "EBX")
-# printlistOP_Ret_Pop(NumOpsD, "ECX")
-# printlistOP_Ret_Pop(NumOpsD, "EDX")
-# printlistOP_Ret_Pop(NumOpsD, "ESI")
-# printlistOP_Ret_Pop(NumOpsD, "EDI")
-# printlistOP_Ret_Pop(NumOpsD, "ECX")
-# printlistOP_Ret_Pop(NumOpsD, "EDI")
-
-# printlistOP_Ret_Pop(NumOpsD, "EBP")
-# printlistOP_Ret_Pop(NumOpsD, "ECX")
-
-# b()
-# c()
-# get_OP_JMP_EAX(NumOpsD)
-# get_OP_JMP_EBX(NumOpsD)
-# get_OP_JMP_ECX(NumOpsD)
-# get_OP_JMP_EDX(NumOpsD)
-# get_OP_JMP_EDI(NumOpsD)
-# get_OP_JMP_ESI(NumOpsD)
-# get_OP_JMP_ESP(NumOpsD)
-
-
-# get_OP_JMP_PTR_EAX (NumOpsD)
-# get_OP_JMP_PTR_EBX(NumOpsD)
-# get_OP_JMP_PTR_ECX(NumOpsD)
-# get_OP_JMP_PTR_EDX(NumOpsD)
-# get_OP_JMP_PTR_EDI(NumOpsD)
-# get_OP_JMP_PTR_ESI(NumOpsD)
-# get_OP_JMP_PTR_EBP(NumOpsD)
-# get_OP_JMP_PTR_ESP(NumOpsD)
-
-# testtest()
-# # printlistOP_Add
-# printlistOP_Pop(NumOpsD, "EAX")
-# printlistOP_Pop(NumOpsD, "EBX")
-# printlistOP_Pop(NumOpsD, "ECX")
-# printlistOP_Pop(NumOpsD, "EDX")
-# printlistOP_Pop(NumOpsD, "EDI")
-# printlistOP_Pop(NumOpsD, "ESI")
-# printlistOP_Pop(NumOpsD, "EBP")
-# printlistOP_Sub(NumOpsD, "EBP")
-# # printlistOP_Sub
-
-# # printlistOP_Xchg (NumOpsD, "ALL")
-# # # printlistOP_Xchg(NumOpsD, "ALL")
-
-# # printlistOP_Xchg(NumOpsD, "EAX")
-# # printlistOP_Xchg(NumOpsD, "EBX")
-# # printlistOP_Xchg(NumOpsD, "ECX")
-# # printlistOP_Xchg(NumOpsD, "EDX")
-# # printlistOP_Xchg(NumOpsD, "EDI")
-# # printlistOP_Xchg(NumOpsD, "ESI")
-# # printlistOP_Xchg(NumOpsD, "EBP")
-# # printlistOP_Xchg(NumOpsD, "ESP")
-
-
-# printlistOP_Mov(NumOpsD, "EAX")
-# printlistOP_Mov(NumOpsD, "EBX")
-# printlistOP_Mov(NumOpsD, "ECX")
-# printlistOP_Mov(NumOpsD, "EDX")
-# printlistOP_Mov(NumOpsD, "EDI")
-# printlistOP_Mov(NumOpsD, "ESI")
-# printlistOP_Mov(NumOpsD, "EBP")
-# printlistOP_Mov(NumOpsD, "ESP")
-
-
-# printlistOP_Inc(NumOpsD, "EAX")
-# printlistOP_Inc(NumOpsD, "EBX")
-# printlistOP_Inc(NumOpsD, "ECX")
-# printlistOP_Inc(NumOpsD, "EDX")
-# printlistOP_Inc(NumOpsD, "EDI")
-# printlistOP_Inc(NumOpsD, "ESI")
-# printlistOP_Inc(NumOpsD, "EBP")
-# printlistOP_Inc(NumOpsD, "ESP")
-
-
-# printlistOP_Dec(NumOpsD, "EAX")
-# printlistOP_Dec(NumOpsD, "EBX")
-# printlistOP_Dec(NumOpsD, "ECX")
-# printlistOP_Dec(NumOpsD, "EDX")
-# printlistOP_Dec(NumOpsD, "EDI")
-# printlistOP_Dec(NumOpsD, "ESI")
-# printlistOP_Dec(NumOpsD, "EBP")
-# printlistOP_Dec(NumOpsD, "ESP")
-
-# printlistOP_ShiftLeft(NumOpsD, "ESP")
-# printlistOP_ShiftRight(NumOpsD, "ESP")
-# printlistOP_RotLeft(NumOpsD, "ESP")
-# printlistOP_RotRight(NumOpsD, "ESP")
-# # printlistOP_Dec
-# showOrdTest()
-# UI()
-# for each in FoundApisName:
-# 	print each
-#pre process test
-#get_OP_JMP_PTR_EBX(NumOpsD)
-
-
-# get_OP_JMP_EAX(NumOpsD)
-# printlistOP_JMP_EAX(NumOpsD)
-# printlistOP_Sub(NumOpsD, "EAX")
-# UI()
-# get_OP_JMP_ESP(NumOpsD)
-# get_OP_CALL_ESP	(NumOpsD)
-# printlistOP_JMP_ESP(NumOpsD)
-# printlistOP_CALL_ESP(NumOpsD)
-# UI()
-# get_OP_JMP_EAX(NumOpsD)
-# get_OP_CALL_EAX	(NumOpsD)
-# get_OP_JMP_PTR_EAX(NumOpsD)
-# printlistOP_JMP_PTR_EAX(NumOpsD)
-# UI()
-# printlistOP_Sub(NumOpsD, "EAX")
-# print get_Total_SUB_EAX()
-
-# 
-
-# print "final answer:"
-# preprocessOP_JMP(NumOpsD, "EAX")
-
-# 
-
+	findEvilImports()
+	initVPVA()
+	doFinalVA(numVPAA)
