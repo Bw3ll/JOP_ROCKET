@@ -14859,7 +14859,7 @@ def get_OP_ALL_CALL(NumOpsDis):
 	numOps = NumOpsDis
 
 	totalSize = len(objs[o].data2)	
-	interval = totalSize / 5
+	interval = totalSize / 12
 	curInterval = 0
 	# while numOps > 2:   # Num of Ops to go back
 	t=0;	
@@ -15388,7 +15388,7 @@ def get_OP_ALL_JMP(NumOpsDis):
 # 							numOps = numOps - 1
 
 	totalSize = len(objs[o].data2)	
-	interval = totalSize / 5
+	interval = totalSize / 12
 	curInterval = 0
 	t=0;		
 	for v in objs[o].data2:
@@ -16144,7 +16144,10 @@ def get_OP_ALL_BOTH(NumOpsDis):
 
 	# while numOps > 2:   # Num of Ops to go back
 	totalSize = len(objs[o].data2)	
-	interval = totalSize / 5
+	# print (totalSize)
+	interval = totalSize / 12
+	# if totalSize > 40000
+	# interval = totalSize / 120
 	curInterval = 0
 	t=0;		
 	for v in objs[o].data2:
@@ -19613,7 +19616,7 @@ def printlistOP_DG_Rare(NumOpsDis):
 		pass
 	o = 0	
 o = 0
-print ("Dispatcher Gadget - Alternative Form")
+# print ("Dispatcher Gadget - Alternative Form")
 
 
 
@@ -31773,9 +31776,9 @@ showOptions()
 # setMitigationsAvoidUI()
 UI()
 
-yes =9992
+yes =99920
 
-if yes == 99932:
+if yes == 9992:
 	# get_OP_CALL_EDX(NumOpsD)
 	# get_OP_JMP_EDX(NumOpsD)
 	Regs =["EAX","EBX","ECX","EDX","ESI","EDI","EBP","ESP"]
@@ -31787,20 +31790,20 @@ if yes == 99932:
 	# getCALL = False
 	# get_OP_JMP_EDX(NumOpsD)
 	printlistOP_JMP_PTR_EMPTY(NumOpsD)
-	printlistOP_MovDeref(NumOpsD, "EAX")
-	printlistOP_MovDeref(NumOpsD, "EBX")
-	printlistOP_MovDeref(NumOpsD, "ECX")
-	printlistOP_MovDeref(NumOpsD, "EDX")
-	printlistOP_MovDeref(NumOpsD, "EDI")
-	printlistOP_MovDeref(NumOpsD, "ESI")
-	printlistOP_MovDeref(NumOpsD, "EBP")
-	printlistOP_MovDeref(NumOpsD, "EBP")
+	# printlistOP_MovDeref(NumOpsD, "EAX")
+	# printlistOP_MovDeref(NumOpsD, "EBX")
+	# printlistOP_MovDeref(NumOpsD, "ECX")
+	# printlistOP_MovDeref(NumOpsD, "EDX")
+	# printlistOP_MovDeref(NumOpsD, "EDI")
+	# printlistOP_MovDeref(NumOpsD, "ESI")
+	# printlistOP_MovDeref(NumOpsD, "EBP")
+	# printlistOP_MovDeref(NumOpsD, "EBP")	
 	printlistOP_Cmpsd(NumOpsD)
 	printlistOP_Lodsd(NumOpsD)
 	printlistOP_Movsd(NumOpsD)
 	printlistOP_Scasd(NumOpsD)
 	printlistOP_Stosd(NumOpsD)
-	printlistOP_JMP_ECX(NumOpsD)
+	# printlistOP_JMP_ECX(NumOpsD)
 	print "done"
 if yes ==999:
 	findEvilImports()
