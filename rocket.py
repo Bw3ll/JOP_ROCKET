@@ -19,6 +19,8 @@ from collections import OrderedDict
 import hashlib
 from stackpivot import *
 from checkIt import *
+import traceback
+
 # from printing import *
 NewCounter = 0
 emp=""
@@ -1296,6 +1298,10 @@ class MyBytes:
 		self.listOP_BaseStosd_CNT = []
 		self.listOP_BaseStosd_NumOps = []
 		self.listOP_BaseStosd_Module = []
+		self.listOP_CALL_ESP = []
+		self.listOP_CALL_ESP_CNT = []
+		self.listOP_CALL_ESP_NumOps = []
+		self.listOP_CALL_ESP_Module = []
 	
 
 # end classs
@@ -1616,6 +1622,11 @@ def clearAllObject(): #4
 		objs[o].listOP_CALL_ESI_CNT[:] = []
 		objs[o].listOP_CALL_EDI_CNT[:] = []
 		objs[o].listOP_CALL_EBP_CNT[:] = []
+		objs[o].listOP_CALL_ESP [:] = []
+		objs[o].listOP_CALL_ESP_CNT [:] = []
+		objs[o].listOP_CALL_ESP_NumOps [:] = []
+		objs[o].listOP_CALL_ESP_Module [:] = []
+
 		objs[o].listOP_CALL_EAX_Module[:] = []
 		objs[o].listOP_CALL_EBX_Module[:] = []
 		objs[o].listOP_CALL_ECX_Module[:] = []
@@ -2016,12 +2027,12 @@ def addListBaseNewJmpPtr2(address, valCount, NumOpsDis, modName, reg):
 		objs[o].listOP_JMP_PTR_OTHER_EBP_NumOps.append(NumOpsDis)
 		objs[o].listOP_JMP_PTR_OTHER_EBP_Module.append(modName)
 
-	elif(reg == "esp_short"):
-		# print("adding esp")
-		objs[o].listOP_JMP_PTR_OTHER_ESP.append(address)
-		objs[o].listOP_JMP_PTR_OTHER_ESP_CNT.append(valCount)
-		objs[o].listOP_JMP_PTR_OTHER_ESP_NumOps.append(NumOpsDis)
-		objs[o].listOP_JMP_PTR_OTHER_ESP_Module.append(modName)
+	# elif(reg == "esp_short"):
+	# 	# print("adding esp")
+	# 	objs[o].listOP_JMP_PTR_OTHER_ESP.append(address)
+	# 	objs[o].listOP_JMP_PTR_OTHER_ESP_CNT.append(valCount)
+	# 	objs[o].listOP_JMP_PTR_OTHER_ESP_NumOps.append(NumOpsDis)
+	# 	objs[o].listOP_JMP_PTR_OTHER_ESP_Module.append(modName)
 
 
 def addListBaseNewCall(address, valCount, NumOpsDis, modName, reg):
@@ -3281,6 +3292,7 @@ def clearListAddAll():
 	objs[o].listOP_BaseStosd_CNT[:] = []
 	objs[o].listOP_BaseStosd_NumOps[:] = []
 	objs[o].listOP_BaseStosd_Module[:] = []
+
 def clearListBaseScasd():
 	objs[o].listOP_BaseScasd[:] = []
 	objs[o].listOP_BaseScasd_CNT[:] = []
@@ -5497,6 +5509,10 @@ def disHereJmp(address, NumOpsDis, Reg, newReg = "default"):
 		val5.append(val)
 		#print val
 
+
+	lGoBack = linesGoBackFindOP
+	if lGoBack > (len(val2)):
+		lGoBack= len(val2)
 # My method is to to detect if there is a ret, jmp or call in the gadget. If I find it, I cut out the offending lines and any leading up to it, leaving only safe gadgets that terminate in a jmp or call. The solution is a reversed for loop with enum and checking to see if jmp or call appears before the end of the gadget. If I do, I excise that line and all above it.  when I intially locate a desired sequence, e.g. jmp eax, I then capture the lines immediately before it. This is a way to ensure  that instructions petaining to control flow are not in the gadget.
 
 	tz = val2.__len__()
@@ -7143,6 +7159,10 @@ def disHereCall(address, NumOpsDis, Reg, newReg = "default"):
 		#print val
 	
 
+	lGoBack = linesGoBackFindOP
+	if lGoBack > (len(val2)):
+		lGoBack= len(val2)
+
 	tz = val2.__len__()
 	tk=0
 	save=0x00
@@ -7414,7 +7434,13 @@ def disHereCall(address, NumOpsDis, Reg, newReg = "default"):
 													addListBaseAddEBP(saveq, numLines, NumOpsDis, modName)
 
 												# addListBaseAddEBP(save, lGoBack, NumOpsDis, modName)
-								except IndexError:
+								except  Exception as e:
+									# print(e, newReg)
+									# print(traceback.format_exc())
+									# print ("i", i, "lGoBack", lGoBack)
+									# for each in val2:
+									# 	print "\t" +each
+									# print "\n"
 									pass
 
 								#Searching for Sub operations
@@ -7496,7 +7522,8 @@ def disHereCall(address, NumOpsDis, Reg, newReg = "default"):
 												if z == True:
 													addListBaseSubEBP(saveq, numLines, NumOpsDis, modName)											
 												# addListBaseSubEBP(save, lGoBack, NumOpsDis, modName)
-								except IndexError:
+								except  Exception as e:
+									#print(e)
 									pass
 								#Searching for Mul operations
 								#Some of the imul instructions I do not think would be very typical for a normal program, but feasible as uninteded instructions.
@@ -7708,7 +7735,8 @@ def disHereCall(address, NumOpsDis, Reg, newReg = "default"):
 														# print "savem"
 														addListBaseMulEBP(saveq, numLines, NumOpsDis, modName)
 													# addListBaseMulEBP(save, lGoBack, NumOpsDis, modName)
-								except IndexError:
+								except  Exception as e:
+									#print(e)
 									pass
 
 								#####DIV/IDIV
@@ -7728,7 +7756,8 @@ def disHereCall(address, NumOpsDis, Reg, newReg = "default"):
 										# addListBaseDiv(save, lGoBack, NumOpsDis, modName)
 										# addListBaseDivEAX(save, lGoBack, NumOpsDis, modName)
 										# addListBaseDivEDX(save, lGoBack, NumOpsDis, modName)
-								except IndexError:
+								except  Exception as e:
+									#print(e)
 									pass
 
 								#searching for mov
@@ -7819,7 +7848,8 @@ def disHereCall(address, NumOpsDis, Reg, newReg = "default"):
 													# print "savem"
 													addListBaseMovEBP(saveq, numLines, NumOpsDis, modName)
 												# addListBaseMovEBP(save, lGoBack, NumOpsDis, modName)
-								except IndexError:
+								except  Exception as e:
+									#print(e)
 									pass
 
 								#searching for lea
@@ -7903,7 +7933,8 @@ def disHereCall(address, NumOpsDis, Reg, newReg = "default"):
 												if z == True:
 													addListBaseLeaEBP(saveq, numLines, NumOpsDis, modName)
 												# addListBaseLeaEBP(save, lGoBack, NumOpsDis, modName)
-								except IndexError:
+								except  Exception as e:
+									#print(e)
 									pass
 								#
 
@@ -7987,7 +8018,8 @@ def disHereCall(address, NumOpsDis, Reg, newReg = "default"):
 												if z == True:
 													addListBaseMovShufEBP(saveq, numLines, NumOpsDis, modName)
 												# addListBaseMovShufEBP(save, lGoBack, NumOpsDis, modName)
-								except IndexError:
+								except  Exception as e:
+									#print(e)
 									pass
 
 								#mov value into registers
@@ -8650,6 +8682,7 @@ def disHereCall(address, NumOpsDis, Reg, newReg = "default"):
 def disHereJMPPTR(address, NumOpsDis, Reg, newReg = "default"):
 	#print "ok2"
 	#print  hex(int(address))
+	global linesGoBackFindOP
 	sp()
 	global o
 	w=0
@@ -8676,6 +8709,10 @@ def disHereJMPPTR(address, NumOpsDis, Reg, newReg = "default"):
 		val2.append(val)
 		val3.append(add2)
 		#print val
+
+	lGoBack = linesGoBackFindOP
+	if lGoBack > (len(val2)):
+		lGoBack= len(val2)
 
 # My method is to to detect if there is a ret, jmp or call in the gadget. If I find it, I cut out the offending lines and any leading up to it, leaving only safe gadgets that terminate in a jmp or call. The solution is a reversed for loop with enum and checking to see if jmp or call appears before the end of the gadget. If I do, I excise that line and all above it.  when I intially locate a desired sequence, e.g. jmp eax, I then capture the lines immediately before it. This is a way to ensure  that instructions petaining to control flow are not in the gadget.
 
@@ -8805,6 +8842,10 @@ def disHereJMPPTR2(address, NumOpsDis, Reg, newReg = "default"):
 		val2.append(val)
 		val3.append(add2)
 		# print val
+
+	lGoBack = linesGoBackFindOP
+	if lGoBack > (len(val2)):
+		lGoBack= len(val2)
 	# print val3
 	# print binaryToStr(CODED2)
 	# print "* * * * *  * * *"
@@ -9317,6 +9358,9 @@ def disHereCALLPTR(address, NumOpsDis, Reg, newReg = "default"):
 		val3.append(add2)
 		#print val
 
+	lGoBack = linesGoBackFindOP
+	if lGoBack > (len(val2)):
+		lGoBack= len(val2)
 # My method is to to detect if there is a ret, jmp or call in the gadget. If I find it, I cut out the offending lines and any leading up to it, leaving only safe gadgets that terminate in a jmp or call. The solution is a reversed for loop with enum and checking to see if jmp or call appears before the end of the gadget. If I do, I excise that line and all above it.  when I intially locate a desired sequence, e.g. jmp eax, I then capture the lines immediately before it. This is a way to ensure  that instructions petaining to control flow are not in the gadget.
 
 	tz = val2.__len__()
@@ -31759,7 +31803,7 @@ def splash():
 	cat+="   |  | | |   | | (        | (\ (  | |   | | |     |  ( \ \| (        | |   \n"
 	cat+="|\_)  ) | (___) | )        | ) \ \_| (___) | (____/\  /  \ \ (____/\  | |   \n"
 	cat+="(____/  (_______)/         |/   \__(_______|_______/_/    \(_______/  )_(   \n"
-	cat+="\tJOP ROCKET: Honoring Ancient Rocket Cats Everywhere\tv2.11"
+	cat+="\tJOP ROCKET: Honoring Ancient Rocket Cats Everywhere\tv2.12"
 
 	print bomb+ cat1+cat
 
@@ -31776,7 +31820,7 @@ showOptions()
 # setMitigationsAvoidUI()
 UI()
 
-yes =99920
+yes =999222
 
 if yes == 9992:
 	# get_OP_CALL_EDX(NumOpsD)
