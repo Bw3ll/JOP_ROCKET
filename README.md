@@ -75,11 +75,10 @@ Look through the list and see if you have all the dependencies. For those you do
 
 ### Dependencies:
 -	Capstone
--	Win32file
--	Win32api
+-	pywin32
 -	Pefile2
 -	Ctypes
-Note: pywin32 possibly can be used for Win32file and Win32api
+Note: pywin32 is used for Win32file and Win32api
 ### Needed files:
 You should have in one directory all five files, rocket.py, lists,py, checkIt.py, ui.py, and stackpivot.py. To begin using the tool, run on command line, python rocket.py filename.exe -- the filename.exe being the program you wish to obtain JOP gadgets or JOP chains for.
 
