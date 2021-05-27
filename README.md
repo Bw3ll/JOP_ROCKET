@@ -27,7 +27,9 @@ With the dispatcher gadget paradigm of JOP, you can 100% eliminate ROP, although
 ## Basic install instructions for JOP ROCKET
 ### Step 1:
 Install Python 2.7. The easiest way to do this will be from the website: https://www.python.org/download/releases/2.7/
+
 If you already have Python 3, you will still need to have Python 2.7 as the tool will not work properly with Python 3.
+
 If you have both, you will need to add the special comment: 
 
 **#!python2**
@@ -38,6 +40,7 @@ to the top of rocket.py. Then run with "py rocket.py" rather than "python rocket
 
 ### Step 2:
 install pip if it isn't already included with Python.
+
 -	https://pip.pypa.io/en/stable/installing/
 
 You will need to save the script provided and run it, as per the instructions on the link. If you run into an error, try using the “alternate” script.
@@ -86,6 +89,7 @@ You should have in one directory all five files, rocket.py, lists,py, checkIt.py
 
 ### Errors:
 If you are getting errors like "SyntaxError: Missing parentheses in call to 'print'", it is likely running with Python 3. Try doing the fix outlined in Step 1 to make the program use Python 2.
+
 Errors related to “lists” or “ui” likely are caused by the location of the **lists.py** and **ui.py** files. Make sure these files are in the same directory as **rocket.py**.
 
 ## More advanced install steps
@@ -97,9 +101,13 @@ To utilize this in a Cygwin environment, you likely will need to install Capston
 More detailed usage information is forthcoming. Refer to the DEF CON 27 talk and the help sub-menu for assistance.
 
 To get started though, you want to have the five Python files in the same directory: rocket.py, ui.py, stackpivot.py, checkIt.py, and lists.py. Then run from command line. You can provide a local file in the install directory, but it will not be able to find modules/DLL's. To find these, the program must be installed, and the absolute path to the application can be supplied as input inside a text file that can be provided as an argument on the command line, e.g.
+
    python rocket.py input.txt
+   
 Inside input.txt, we would have the absolute path, e.g. C:\rocket2\sample_binary.exe. By providing the absolute path, you will be able to extract the modules to scan as well, if so desired. If you want to use JOP ROCKET with only the program in the local directory, it will only find gadgets for the image executable itself, i.e. no DLLs. To use it in that fashion, use the following syntax:
+
    python rocket.py sample_binary.exe
+   
 If the executable is in the same directory, you may use JOP ROCKET in the manner described above
 
 ## Making sure you get ALL the modules/DLLs for a binary
@@ -108,15 +116,18 @@ When loading an executable or DLL to be analyzed, there are two approaches. The 
 ## Memory Issues with Very Large Binaries
 The 32-bit Python will choke on very large binaries. To be able to work with these, you must use 64-bit Python.
 
-Here are some instructions from Austin on going from 32-bit to 64-bit Python.
-To install the 64-bit version of python2.7, first make sure the old installation has been uninstalled. After installing the 64-bit version, you may get some errors when importing libraries such as "DLL load failed: %1 is not a valid Win32 application". These occur because Python is trying to load the previously installed 32-bit versions. To fix this problem, use pip to uninstall the library. If both Python 2 and 3 are installed, make sure the correct version of pip is used by using it as "py -2 -m pip <command>". 
+Here are some instructions from Austin on going from 32-bit to 64-bit Python: To install the 64-bit version of python2.7, first make sure the old installation has been uninstalled. After installing the 64-bit version, you may get some errors when importing libraries such as "DLL load failed: %1 is not a valid Win32 application". These occur because Python is trying to load the previously installed 32-bit versions. To fix this problem, use pip to uninstall the library. If both Python 2 and 3 are installed, make sure the correct version of pip is used by using it as "py -2 -m pip <command>". 
 
 Fixing the issue for capstone is straightforward:
+
 py -2 -m pip uninstall capstone
+
 py -2 -m pip install capstone
 
 Errors regarding the win32api import are related to pywin32. Uninstalling this is more difficult as pip may not automate the process. It may have to be uninstalled manually by deleting the PyWin32 files within ...\Python27\Lib\site-packages.
+
 Then, run:
+
 py -2 -m pip install pywin32
 
 Afterwards, finish the installation by running ...\Python27\Scripts\pywin32_postinstall.py -install
