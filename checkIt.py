@@ -73,7 +73,11 @@ def splitWordrs(stringReplace):
 		return new2[0]	
 
 
-
+def splitWord3(mystr):
+	array = mystr.split(" ")
+	ok=array[3]
+	ok = ok [1:4]	
+	return ok
 def splitWordrs2(stringReplace):
 	array = stringReplace.split(" ")
 	new2=[]
@@ -201,8 +205,31 @@ def cpuCheck(instructions, reax,rebx,recx, redx, redi, resi,resp,rebp):
 	return reax, rebx, recx,redx,redi,resi,resp,rebp
 
 
+def splitterSpace(lines, num):
+	#format  push edx # pop ebx # pop eax # push ebp # pop ebx # add esp, 0x10 # jmp eax
+	array = lines.split(" ")
+	new = ""
+	for word in array:
+		new =  word
+	# new2 = new.split(")")eturn array
+	return array[num]
+	# return array
 
 
+def splitterTab(lines, num):
+	#format  push edx # pop ebx # pop eax # push ebp # pop ebx # add esp, 0x10 # jmp eax
+	array = lines.split("\t")
+	new = ""
+	for word in array:
+		new =  word
+	# new2 = new.split(")")eturn array
+	comma = re.match( r'[a-z]*,', array[num], re.M|re.I)
+	if comma:
+		dprint ("comma")
+		ans = array[num]
+		array[num] = ans[:-1]
+	return array[num]
+	# return array
 def splitterRetval(stringReplace):
 	#format  push edx # pop ebx # pop eax # push ebp # pop ebx # add esp, 0x10 # jmp eax
 	array = stringReplace.split(" # ")
@@ -779,6 +806,12 @@ def splitterDG(word):
 	# print new2[2]
 	return new2[2]
 
+
+def splittDG2(word):
+	dprint ("splittDG2 " + word )
+	array = word.split("\t")
+	dprint (array[0])
+	return array[0]
 def giveLineNum(val2, line):
 	# print "details"
 	# for x in val2:
@@ -871,6 +904,7 @@ def stupidPre(val2, num):
 	# print "return True2" 
 	return True
 
+
 def stupidPreJ(val2, num):
 	global cutting
 	res = []
@@ -924,6 +958,289 @@ def stupidPreJ(val2, num):
 	# 	print x
 	# print "return True2" 
 	return True
+
+
+def stupidPreJJ(val2, num, addy):
+	global cutting
+	res = []
+	bad = 0
+	# print "***********PRESTUPIDJ"
+	saveJ=0
+	saveC =0
+
+	val2r = val2[:]
+
+	start = re.match( r'\bjmp\b|\bcall\b', val2[0], re.M|re.I)
+	if not start:
+		# print "opps2!"
+		val2.reverse()
+	t=0
+
+	if splitter(val2[0]) < splitter(val2[len(val2)-1]):
+		# print "jrev"
+		val2.reverse()
+	else:
+		# print "no rev"
+		pass
+
+
+	limit=num#len(val2)-(num)
+	# print "limit "  + str(limit) + " num: " + str(num) + " size: " + str(len(val2))
+	
+	for xx in val2:
+		print "\t**" + xx
+	for x in val2:
+	# for i in val2: #   #was +1
+	#	print i
+		# print "t: " + str(t) + " x: " + x
+		# matchObj3 = re.compile( r'\bcall\b|\bjmp\b|\bjo\b|\bjno\b|\bjsn\b|\bjs\b|\bje\b|\bjz\b|\bjne\b|\bjnz\b|\bjb\b|\bjnae\b|\bjc\b|\bjnb\b|\bjae\b|\bjnc\b|\bjbe\b|\bjna\b|\bja\b|\bjnben\b|\bjl\b|\bjnge\b|\bjge\b|\bjnl\b|\bjle\b|\bjng\b|\bjg\b|\bjnle\b|\bjp\b|\bjpe\b|\bjnp\b|\bjpo\b|\bjczz\b|\bjecxz\b|\bjmp\b|\bint\b|\bretf\b|\bdb\b|\bhlt\b|\bloop\b|\bret\b|\bleave\b|\bint3\b|\binsd\b|\bptr\b')
+
+
+		# if matchObj3.search(x):
+		matchObj3 = re.search( r'\bcall\b|\bjmp\b|\bjo\b|\bjno\b|\bjsn\b|\bjs\b|\bje\b|\bjz\b|\bjne\b|\bjnz\b|\bjb\b|\bjnae\b|\bjc\b|\bjnb\b|\bjae\b|\bjnc\b|\bjbe\b|\bjna\b|\bja\b|\bjnben\b|\bjl\b|\bjnge\b|\bjge\b|\bjnl\b|\bjle\b|\bjng\b|\bjg\b|\bjnle\b|\bjp\b|\bjpe\b|\bjnp\b|\bjpo\b|\bjczz\b|\bjecxz\b|\bjmp\b|\bint\b|\bretf\b|\bdb\b|\bhlt\b|\bloop\b|\bret\b|\bleave\b|\bint3\b|\binsd\b', x, re.M|re.I)
+
+		if matchObj3:
+			myCall = re.search( r'\bcall\b', x, re.M|re.I)
+			myJmp = re.search( r'\bjmp\b', x, re.M|re.I)
+			if bad == 0:
+				if myCall:
+					saveC=t
+				if myJmp:
+					saveJ=t
+					print "j here "
+					print t
+
+
+
+
+			bad = bad + 1
+			if bad < 2:
+				# print "bad2 " + str(t) + " x: " + x
+				res.append(str(x))
+			if bad > 1:   ###### WAS 1 - missing small ones - fixed it - 2 - not sure original logic behind this
+				# print "bad3 "  + str(t) + " x: " + x
+				# print  matchObj3.search(x)
+
+
+
+				matchObj3 = re.search( r'\bcall\b|\bjmp\b', x, re.M|re.I)
+				if matchObj3 and bad == 2:
+					print "STOP! " +  ""
+					print x
+					print ("j", saveJ)
+					k=0
+					for d in val2r:
+						print "\t# " + d
+
+						matchObj3 = re.search( r'\bcall\b|\bjmp\b', d, re.M|re.I)
+						if matchObj3:
+							print "found true end " + d
+							print "need " + str((addy))
+						k+=1
+
+				return False
+		else:	
+			if bad < 2 : 
+				res.append(x)
+		t+=1
+		if limit == t:
+			# print "return True" 
+			return True
+	# print "res: " + str(len(res))
+	# for x in res:
+	# 	print x
+	# print "return True2" 
+	return True
+
+def stupidPreJJ2(val2, num, addy, saveq, transfer, listAddy, Reg):
+	try:
+		res = []
+		bad = 0
+		saveJ=0
+		saveC =0
+		val2r = val2[:]
+		strAddy=str(addy)
+		t=0
+		w=0
+		gotIt=False
+		val2r.reverse()
+		listAddy.reverse
+		for line in val2r:
+			findNumLines = re.search( strAddy, line, re.M|re.I)
+			if findNumLines:
+				print "gots one!!! " + str(t)
+				print line
+				print ("saveq", hex(saveq))
+				gotIt = True
+				# w+=1
+			if gotIt:
+				w+=1
+			if transfer=="call":
+				test = re.search( r'call e', line, re.M|re.I)
+				bad = re.search( r'\bjmp\b|\bjo\b|\bjno\b|\bjsn\b|\bjs\b|\bje\b|\bjz\b|\bjne\b|\bjnz\b|\bjb\b|\bjnae\b|\bjc\b|\bjnb\b|\bjae\b|\bjnc\b|\bjbe\b|\bjna\b|\bja\b|\bjnben\b|\bjl\b|\bjnge\b|\bjge\b|\bjnl\b|\bjle\b|\bjng\b|\bjg\b|\bjnle\b|\bjp\b|\bjpe\b|\bjnp\b|\bjpo\b|\bjczz\b|\bjecxz\b|\bjmp\b|\bint\b|\bretf\b|\bdb\b|\bhlt\b|\bloop\b|\bret\b|\bleave\b|\bint3\b|\binsd\b', line, re.M|re.I)
+			if transfer=="jmp":
+				test = re.search( r'jmp e', line, re.M|re.I)
+				bad = re.search( r'\bcall\b|\bjo\b|\bjno\b|\bjsn\b|\bjs\b|\bje\b|\bjz\b|\bjne\b|\bjnz\b|\bjb\b|\bjnae\b|\bjc\b|\bjnb\b|\bjae\b|\bjnc\b|\bjbe\b|\bjna\b|\bja\b|\bjnben\b|\bjl\b|\bjnge\b|\bjge\b|\bjnl\b|\bjle\b|\bjng\b|\bjg\b|\bjnle\b|\bjp\b|\bjpe\b|\bjnp\b|\bjpo\b|\bjczz\b|\bjecxz\b|\bjmp\b|\bint\b|\bretf\b|\bdb\b|\bhlt\b|\bloop\b|\bret\b|\bleave\b|\bint3\b|\binsd\b', line, re.M|re.I)
+			if bad:
+				print "BAD: " + str(listAddy[t])
+				print line
+				print ("t",t, "total lines", w)
+			if bad:
+				print "I is quitting"
+				break
+			if test: # and gotIt:
+				print "END, gots other: " + str(listAddy[t]) + " " +  Reg
+				print line
+				print ("total lines " + str(w) + " t: " + str(t))
+				print ("retVal",)
+
+			t+=1
+
+	except Exception as e:
+		print e
+		# print ("badd address", address, "i", i)
+		# for each in val2:
+		# 	print "\t\t"+each
+		print(traceback.format_exc())
+
+
+def reverseOffsets(val2):
+	arrOffsets = []
+	for each in myTest:
+		array = each.split("(offset ")
+		offset = array[1]
+		offset = offset[:-2]
+		hexOffset = int(offset, 16)
+		print offset
+		print hex(hexOffset)
+		arrOffsets.append(offset)
+	print arrOffsets
+	if arrOffsets[len(arrOffsets)-1] > arrOffsets[len(arrOffsets)-2]:
+		print "bigger"
+	else:
+		print "smaller" 
+	arrOffsets.reverse()
+	print arrOffsets
+
+def reverseChecker(lines):
+	try: 
+		dprint ("reverseChecker")
+		firstOff=0
+		secondOff=0
+		t=0
+		for line in lines:
+			array = line.split("offset")
+			val= array[1].strip()
+			val= val[:-1]
+			val = int(val,16)
+			if t==0:
+				firstOff=val
+			if t==(len(lines)-1):
+				secondOff=val
+			t+=1
+
+		dprint ("rcheck: 1", hex(firstOff), "2", hex(secondOff))
+		if firstOff > secondOff:
+			dprint ("reversing")
+			lines.reverse()
+			return lines
+		else:
+			return lines
+
+	except Exception as e:
+		# pass
+		print "rcheck trace"
+		print e
+		print(traceback.format_exc())
+
+
+def dprint(*args):
+	skip=True
+	if not skip:
+		print args
+def stupidPreJJ3(val5, addy,addyV, transfer, listAddy, listTReg):
+	dprint ("\n\n\n\n********************************\nnew start " + str((addy)) + "\n\n")
+	dprint (val5, addy, addyV, transfer, listAddy, listTReg)
+
+	# return False, 0,0
+	try:
+		bad = 0
+		val5r = val5[:]
+		combined = hex(int(addy,16)+addyV)
+		strAddy=str(combined)
+		t=0
+		w=0
+		gotIt=False
+		badCt=0
+		savMy=""
+		doubleChecking=False
+		val5r=reverseChecker(val5r)
+		dprint ("mySize", len(val5))
+		for e in val5r:
+			dprint( "\t" + e)
+		for line in val5r:
+			dprint (line)
+			findNumLines = re.search( strAddy, line, re.M|re.I)
+			if not gotIt:
+				dprint( "searching for " + strAddy)
+ 			if findNumLines:
+ 				gotIt = True
+				dprint ("gots one!!! " + str(t) + "transfer: " +  transfer + " gotIt: " + str(gotIt))
+				dprint (line)
+				dprint ("transfer: " +  transfer + " gotIt: " + str(gotIt))
+				savMy=line
+				
+			if gotIt:
+				w+=1  
+			if transfer=="call":
+				test = re.search( r'call e', line, re.M|re.I)
+				test2 = re.search( r'call|call [dword]*', line, re.M|re.I)
+				bad = re.search( r'\bjmp\b|\bljmp|\bjo\b|\bjno\b|\bjsn\b|\bjs\b|\bje\b|\bjz\b|\bjne\b|\bjnz\b|\bjb\b|\bjnae\b|\bjc\b|\bjnb\b|\bjae\b|\bjnc\b|\bjbe\b|\bjna\b|\bja\b|\bjnben\b|\bjl\b|\bjnge\b|\bjge\b|\bjnl\b|\bjle\b|\bjng\b|\bjg\b|\bjnle\b|\bjp\b|\bjpe\b|\bjnp\b|\bjpo\b|\bjczz\b|\bjecxz\b|\bjmp\b|\bint\b|\bretf\b|\bdb\b|\bhlt\b|\bloop\b|\bret\b|\bleave\b|\bint3\b|\binsd\b|\benter\b|\bjns\b', line, re.M|re.I)
+				if test2 and gotIt:
+					badCt +=1
+			if transfer=="jmp":
+				test = re.search( r'jmp e', line, re.M|re.I)
+				test2 = re.search( r'jmp|jmp [dword]*', line, re.M|re.I)
+				bad = re.search( r'\bcall\b|\bljmp\b|\bjo\b|\bjno\b|\bjsn\b|\bjs\b|\bje\b|\bjz\b|\bjne\b|\bjnz\b|\bjb\b|\bjnae\b|\bjc\b|\bjnb\b|\bjae\b|\bjnc\b|\bjbe\b|\bjna\b|\bja\b|\bjnben\b|\bjl\b|\bjnge\b|\bjge\b|\bjnl\b|\bjle\b|\bjng\b|\bjg\b|\bjnle\b|\bjp\b|\bjpe\b|\bjnp\b|\bjpo\b|\bjczz\b|\bjecxz\b|\bint\b|\bretf\b|\bdb\b|\bhlt\b|\bloop\b|\bret\b|\bleave\b|\bint3\b|\binsd\b|\benter\b|\bjns\b', line, re.M|re.I)
+				if test2 and gotIt:
+					badCt +=1
+			if (bad) or (badCt > 1):
+				dprint ("BAD: " + str(listAddy[t]))
+				dprint ("start was: " + strAddy)
+				dprint (line)
+				# print ("t",t, "total lines", w)
+				return False, 0,0,0
+				break
+			if test and gotIt: 
+				dprint( "END, got final transfer: " + str(listAddy[t])  )
+				dprint (line)
+
+				if doubleChecking:
+					answer = splitterSpace(savMy,1)
+					answer = splitterTab(answer,0)
+					answer=answer.encode()
+					print ("answer", answer)
+					print ("listTReg", listTReg, "savMy", savMy)		
+					if answer == listTReg:
+						print "i got a match"
+					else:
+						if listTReg != "all":
+							xc = re.match( r'xchg', savMy, re.M|re.I)
+							if not xc:
+								dprint ("BAD match")
+
+
+				dprint ("total lines " + str(w) + " t: " + str(t))
+				dprint ("New retVal",str(listAddy[t]), int(listAddy[t],0),  w, listTReg )
+				return True, int(listAddy[t],0), w, listTReg
+			t+=1
+		return False, 0,0,0
+	except Exception as e:
+		# pass
+		print "jj3 trace"
+		print e
+		print(traceback.format_exc())
+
 
 def stupidPreJk(val2, num):
 	global cutting

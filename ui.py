@@ -4,16 +4,17 @@ import os.path
 import sys
 import sets
 import copy
-Regs =[]
+# Regs =[]
+Regs =["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EBP", "ESP"]
 RegsDG =[]
-RegsPrint =[]
+RegsPrint =["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EBP", "ESP"]
 Input = []
 CF = []
 IA86 =["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EBP", "ESP"]
 RegsVP=["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EBP", "ESP"]
 IA862 =["EAX", "EBX", "ECX", "EDX", "EDI", "ESI", "EBP", "ESP"]
 CF2 = ["JMP", "CALL", "ALL"]
-InputAcceptable = ["ja", "jb", "jc", "jd", "jdi","jsi", "jbp", "jsp", "j", "c", "ca","cb", "cc", "cd", "cdi", "csi","cbp", "csp", "pja", "pjb", "pjc", "pjd", "pjdi","pjsi", "pjbp", "pjsp", "pj", "pc", "pca","pcb", "pcc", "pcd", "pcdi", "pcsi","pcbp", "pcsp","ma", "a", "s", "m","d", "move", "mov", "movv", "movs","l", "xc", "st", "po", "pu","id", "inc", "dec", "bit", "sl","sr", "rr", "rl", "all", "rec","da", "db", "dc", "dd", "ddi","dsi", "dbp", "dis","ba", "bb", "bc", "bd", "bdi","bsi", "bbp", "bdis","oa", "ob", "oc", "od", "odi","osi", "obp", "odis", "stack", "deref", "emp","dplus", "mit", "md","ld","cd","scd","std", "str"] #,"", "", "", "", "","", "", "", "", "","", "", "", "", "","", "", "", "", "","", "", "", "", "",
+InputAcceptable = ["ja", "jb", "jc", "jd", "jdi","jsi", "jbp", "jsp", "j", "c", "ca","cb", "cc", "cd", "cdi", "csi","cbp", "csp", "pja", "pjb", "pjc", "pjd", "pjdi","pjsi", "pjbp", "pjsp", "pj", "pc", "pca","pcb", "pcc", "pcd", "pcdi", "pcsi","pcbp", "pcsp","ma", "a", "s", "m","d", "move", "mov", "movv", "movs","l", "xc", "st", "po", "pu","id", "inc", "dec", "bit", "sl","sr", "rr", "rl", "all", "rec","da", "db", "dc", "dd", "ddi","dsi", "dbp", "dis","ba", "bb", "bc", "bd", "bdi","bsi", "bbp", "bdis","oa", "ob", "oc", "od", "odi","osi", "obp", "odis", "stack", "deref", "emp","dplus", "mit", "md","ld","cd","scd","std", "str", "pad","2dg", "jpp"] #,"", "", "", "", "","", "", "", "", "","", "", "", "", "","", "", "", "", "","", "", "", "", "",
 
 NumOpsD = 13    # 13
 linesGoBack = 4
@@ -47,10 +48,10 @@ def showOptions():
 	options += "s: Scope--look only within the executable or executable and all modules\n"
 	options += "u: Unassembles from offset. See detailed: b-h\n"
 	# options += "b: Hash boring redundancy limit. See detailed: u-h\n"  # RETIRED
-	options += "a: Do 'everything' for selected PE and modules. Does not build chains.\n"
+	# options += "a: Do 'everything' for selected PE and modules. Does not build chains.\n"
 	options += "w: Show mitigations for PE and ennumerated modules.\n"
 	options += "b: Show or add bad characters.\n"
-	options += "v: Generates CSV of all operations from all modules.\n"
+	# options += "v: Generates CSV of all operations from all modules.\n"
 	options += "c: Clears everything.\n"
 	options += "k: Clears selected DLLs.\n"
 	options += "i: change imagebase for the image executable\n"
@@ -127,7 +128,10 @@ def showPrintOptions():
 	options +="oc - Print d. gadgets for ECX\t\tod - Print best d. gadgets for EDX\n"	
 	options +="odi - Print d. gadgets for EDI\t\tosi - Print best d. gadgets for ESI\n"
 	options +="obp - Print d. gadgets for EBP\t\t \n"
-	options +="dplus - print all alternative d. gadgets - jmp ptr dword [ reg +/-]"
+	options +="dplus - print all alternative d. gadgets - jmp ptr dword [ reg +/-]\n"
+	options +="\n2dg (NEW)- print all two-gadget dispatchers! (NEW) - jmp/call\n"
+	options +="\tThese should be chained with a dereference gadget.\n"
+	options +="\tE.g. See Empty JMP PTR and JMP PTR POP \n"
 	options +=" \n"
 	options +="j - Print all JMP REG\t\t\tc - Print all CALL REG\n"
 	options +="\tja - Print all JMP EAX\t\t\tca - Print all CALL EAX\n"
@@ -139,6 +143,8 @@ def showPrintOptions():
 	options +="\tjbp - Print all JMP EBP\t\t\tcbp - Print all CALL EBP\n"
 	options +="\tjsp - Print all JMP ESP\t\t\tcsp - Print all CALL ESP\n"
 	options +="emp - Print all 'empty' JMP PTR [reg]  (NEW) \n"
+	options +="jpp - Print all JMP PTR [reg] # POP (NEW) \n"
+	options +="\tWorks with two-gadget dispatcher that starts with Call\n"
 	options +="pj - Print JMP PTR [REG]\t\tpc - Print CALL PTR [REG]\n"
 	options +="\tpja - Print JMP PTR [EAX]\t\tpca - Print CALL PTR [EAX]\n"
 	options +="\tpjb - Print JMP PTR [EBX]\t\tpcb - Print CALL PTR [EBX\n"
@@ -151,6 +157,7 @@ def showPrintOptions():
 	options +="ma - Print all arithmetic\t\tst - Print all stack operations\n"
 	options +="\ta - Print all ADD\t\t\tpo - Print POP\n"
 	options +="\ts - Print all SUB\t\t\tpu - Print PUSH\n"
+	options +="\t                 \t\t\tpad - Popad\n"
 	options +="\t\t\t\t\t\tstack - all stack pivots (NEW)\n"
 	options +="\tm - Print all MUL\t\tid - Print INC, DEC\n"
 	options +="\td - Print all DIV\t\t\tinc - Print INC\n"
@@ -160,16 +167,16 @@ def showPrintOptions():
 	options +="\tmovv - Print all MOV Value\t\tsl - Print Shift Left\n"
 	options +="\tmovs - Print all MOV Shuffle\t\tsr - Print Shift Right\n"
 	options +="\tderef - Print all MOV Dword\n" 
-	options +="\t\tPTR dereferences (NEW)\n"
+	options +="\t\tPTR dereferences (NEW)\t\tn - neg\n"
 	options +="\tl - Print all LEA\t\t\trr - Print Rotate Right\n"
 	options +="\txc - Print XCHG\t\t\t\trl - Print Rotate Left\n"
 
 
-	options +="str - Print all strings (good for DG)\t\t\t\n"
+	options +="str - Print all strings (good for DG)\t\txo - XOR\n"
 	options +="\tcd - cmpsd\t\t\n"
 	options +="\tld - lodsd\t\t\n"
 	options +="\tmd - movsd\t\t\n"
-	options +="\tstd - stosd\t\t\n"
+	# options +="\tstd - stosd\t\t\n"
 	options +="\tscd - scasd\t\t\n"
 
 	options +="\nall - Print all the above\t\t\trec - Print all operations only (Recommended)\n\n"
