@@ -1,17 +1,16 @@
 ![alt text](https://github.com/Bw3ll/JOP_ROCKET/blob/master/jopRocket3.jpg)
 # JOP ROCKET
 
-**NOTE: We made an update with important new features and improved performance 5/6/2021 with v.2.12. Another smaller update with additional gadgets is planned, including two-gadget dispatcher! 2.12 fixes an indexing error that prematurely ended some larger binaries from being scanned all the way.**
-
-Current version: 2.12
+**NOTE: With 2.15, we introduce the two-gadget disaptcher--this significantly expands possibilities with dispatcher gadgets. A lot of optimizations and additional new features have been added with 2.15 on May 26, 2021.**
+Current version: 2.15 
 
 The Jump-oriented Programming Reversing Open Cyber Knowledge Expert Tool, or JOP ROCKET, is a tool designed to help facilitate JOP gadget discovery in an x86 Windows environment. This tool was released at DEF CON 27, where it was the subject of a talk by Dr. Bramwell Brizendine and Dr. Josh Stroschein. A major update is under development was released this September, 2020, with minor updates planned in the near future.
 
 Please navigate to [https://github.com/Bw3ll/JOP_ROCKET](https://github.com/Bw3ll/JOP_ROCKET/) in order to download this tool. 
 
-A major update of the framework was released September 2020; please make sure you have the latest version. Another major release was made April 5, 2021, to drastically improve performance.
+A number of major updates have occurred. It is recommended than any version prior to 2.15 be updated.
 
-The tool is a Python script utilizing the Capstone disassembly enginge as well as other dependencies. This software exploitation tool is a fully featured artifact designed to facilitate Jump-oriented Programming. It is intended to be run on Windows, but can also run on any environment with the dependencies, albeit in a more limited context outside Windows. 
+JOP ROCKET is a Python program utilizing the Capstone disassembly engine as well as other dependencies. This software exploitation tool is a fully featured artifact designed to facilitate Jump-oriented Programming. It is intended to be run on Windows.
 
 Usage information is not available at this time beyond what is in the help menu. Constructing JOP exploits is not straightforward and is very nuanced, with some parallels but many differences from ROP. Please refer to DEF CON talk to see a brief demo. https://www.youtube.com/watch?v=PMihX693mPE
 
@@ -19,7 +18,7 @@ This tool has been taught at Dakota State University in the doctoral program, as
 
 Thank you to Austin Babcock for his help with various issues relating to the JOP ROCKET, including his install instructions. He is a master of JOP. 
 
-I have uploaded an archive here, JOP ROCKET challenge - toy binaries.zip, to allow interested parties to test and practice JOP on some sample toy binaries, using the JOP ROCKET. Can you bypass Data Execution Prevention (DEP)? This is good if you want to practice JOP on a binary that you know is guaranteed to be vulnerable and have the right gadgets. There is an easier and a harder version of the same binary. Though JOP likely will be harder the first time, until someone gets the hang of it. Once you master JOP with these binaries, you can try it on some real-world gadgets, assuming they have sufficient gadgets. If you are doing the dispatcher gadget paradigm, keep in mind you do need a dispatcher gadget. JOP is also possible mixed in with ROP, using a jop gadget to point to a RET, so JMP EDX could have EDX point to RET. This is more useful if you need just one or two JOP gadgets to make ROP work. The binaries in the archive should allow you to do use the dispatcher gadget paradigm in a few different ways though! 
+We have uploaded an archive here, JOP ROCKET challenge - toy binaries.zip, to allow interested parties to test and practice JOP on some sample toy binaries, using the JOP ROCKET. Can you bypass Data Execution Prevention (DEP)? This is good if you want to practice JOP on a binary that you know is guaranteed to be vulnerable and have the right gadgets. There is an easier and a harder version of the same binary. Though JOP likely will be harder the first time, until someone gets the hang of it. Once you master JOP with these binaries, you can try it on some real-world gadgets, assuming they have sufficient gadgets. If you are doing the dispatcher gadget paradigm, keep in mind you do need a dispatcher gadget. JOP is also possible mixed in with ROP, using a jop gadget to point to a RET, so JMP EDX could have EDX point to RET. This is more useful if you need just one or two JOP gadgets to make ROP work. The binaries in the archive should allow you to do use the dispatcher gadget paradigm in a few different ways though! 
 
 With the dispatcher gadget paradigm of JOP, you can 100% eliminate ROP, although it is easiest to start things off with two ROP gadgets, to load the dispatch table and the dispatcher gadget. The pre-built JOP chain will do this for you automatically, assuming they are present. From there, it can be pure JOP, using both indirect jumps and indirect calls (JMP EBX, CALL EDX, etc.).
 
@@ -27,12 +26,12 @@ With the dispatcher gadget paradigm of JOP, you can 100% eliminate ROP, although
 ## Basic install instructions for JOP ROCKET
 ### Step 1:
 Install Python 2.7. The easiest way to do this will be from the website: https://www.python.org/download/releases/2.7/
-If you already have Python 3, you will still need to have Python 2.7 as the tool will not work properly with Python 3. At this time, the code-base has not been updated to Python 3, as it is over 20,000 lines of code.
+If you already have Python 3, you will still need to have Python 2.7 as the tool will not work properly with Python 3.
 If you have both, you will need to add the special comment: 
 
 **#!python2**
 
-to the top of rocket.py. Then run with "py rocket.py" rather than "python rocket.py". This will ensure the program is run using Python 2.7.
+to the top of rocket.py. Then run with "py rocket.py" rather than "python rocket.py". This will ensure the program is run using Python 2.7. Alternatively, you can just do py -2 rocket.py
 
 ![alt text](https://github.com/Bw3ll/JOP_ROCKET/blob/master/python.jpg)
 
@@ -80,7 +79,7 @@ Look through the list and see if you have all the dependencies. For those you do
 -	Win32api
 -	Pefile2
 -	Ctypes
-
+Note: pywin32 possibly can be used for Win32file and Win32api
 ### Needed files:
 You should have in one directory all five files, rocket.py, lists,py, checkIt.py, ui.py, and stackpivot.py. To begin using the tool, run on command line, python rocket.py filename.exe -- the filename.exe being the program you wish to obtain JOP gadgets or JOP chains for.
 
@@ -90,7 +89,7 @@ Errors related to “lists” or “ui” likely are caused by the location of t
 
 ## More advanced install steps
 
-To utilize this in a Cygwin environment, you likely will need to install Capstone from the source. There are varous ways to do so, and Capstone's documentation provides assistance. Cygwin was originally used during the development of the tool, although this is no longer the case. JOP ROCKET v2.0 is untested on Cygwin, and command prompt is the recommended usage of JOP ROCKET. 
+To utilize this in a Cygwin environment, you likely will need to install Capstone from the source. There are varous ways to do so, and Capstone's documentation provides assistance. Cygwin was originally used during the development of the tool, although this is no longer the case. JOP ROCKET v2.0 is untested on Cygwin, and command prompt is the recommended usage of JOP ROCKET. Note: Cygwin usage is no longer explicitly supported, and it is no longer recommended to be used with this program.
 
 ## Basic Usage
 
@@ -103,7 +102,7 @@ Inside input.txt, we would have the absolute path, e.g. C:\rocket2\sample_binary
 If the executable is in the same directory, you may use JOP ROCKET in the manner described above
 
 ## Making sure you get ALL the modules/DLLs for a binary
-When loading an executable or DLL to be analyzed, there are two approaches. The first is to simply place the executable in the same directory and run the program, using that as an argument, e.g. python rocket.py binary.exe. This will enable the user to identify and extract many of the system modules. However, it will not find some of the non-system binaries. For comprehensive coverage, the user must supply the absolute path to the application in a text file and use that as input to ROCKET, e.g. python rocket.py input.txt. This will then allow for ROCKET to locate, extract, and search non-system DLLs associated with the target application. Thus, it is generally recommended to supply the binary as input via a text file, as otherwise some DLLs may be excluded.
+When loading an executable or DLL to be analyzed, there are two approaches. The first is to simply place the executable in the same directory and run the program, using that as an argument, e.g. python rocket.py binary.exe. This will enable the user to identify and extract many of the system modules. However, it will not find some of the non-system binaries. For comprehensive coverage, the user must supply the absolute path to the application in a text file and use that as input to ROCKET, e.g. python rocket.py input.txt. This will then allow for ROCKET to locate, extract, and search non-system DLLs associated with the target application. Thus, it is generally recommended to supply the binary as input via a text file, as otherwise some DLLs may be excluded. E.g., python rocket.py binaryToScan.txt. The binaryToScan.txt should contain the path for the binary, C:\Users\CoolPerson\Desktop\Instructions\targetBinary.exe
 
 ## Memory Issues with Very Large Binaries
 The 32-bit Python will choke on very large binaries. To be able to work with these, you must use 64-bit Python.
