@@ -8,7 +8,7 @@ The Jump-oriented Programming Reversing Open Cyber Knowledge Expert Tool, or JOP
 
 Please navigate to [https://github.com/Bw3ll/JOP_ROCKET](https://github.com/Bw3ll/JOP_ROCKET/) in order to download this tool. 
 
-A number of major updates have occurred. It is recommended than any version prior to 2.15 be updated.
+A number of major updates have occurred. It is recommended that any version prior to 2.15 be updated, to take advantage of the many updates. These include automatic JOP chain generation, discovering new types of gadgets, new types of dispatcher gadgets, and the two-gadget dispatchers. JOP ROCKET has also undergone many other important chances to enhance and optimize its performance and speed.
 
 JOP ROCKET is a Python program utilizing the Capstone disassembly engine as well as other dependencies. This software exploitation tool is a fully featured artifact designed to facilitate Jump-oriented Programming. It is intended to be run on Windows.
 
