@@ -3,7 +3,7 @@
 
 **NOTE: With 2.15, we introduce the two-gadget disaptcher--this significantly expands possibilities with dispatcher gadgets. A lot of optimizations and additional new features have been added with 2.15 on May 26, 2021.**
 
-**Update: November 29, 2021: I have uploaded the slides for @Hack in Ryadh and also a white paper on Shellcodeless JOP. The silent demo videos useed in the talk may be found here: https://www.youtube.com/playlist?list=PLynyJsHgQaJ3AfQGKVkeZJ9cWa7mIqDMV
+**Update: November 29, 2021: I have uploaded the slides for @Hack in Ryadh and also a white paper on Shellcodeless JOP. The silent demo videos useed in the talk may be found here: https://www.youtube.com/playlist?list=PLynyJsHgQaJ3AfQGKVkeZJ9cWa7mIqDMV**
 
 Current version: 2.15 
 
