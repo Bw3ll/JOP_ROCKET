@@ -245,10 +245,9 @@ You can see a video of it and him talking about it at the HITB 2021 presentation
 
 **Q: Are there any "vulnerabilities" with JOP in compilers?**
 
-**A:** Actually, yes, with VisualStudio 2015,  all of that we found compiled with Developer Prompt had a couple highly desirable dispatcher gadgets! I was going to include that in one talk, but it got cut for time. I may include that separately at a later time. The bad news is we evaluated all binaries made by Visual Studio for other years, up until about a year ago, and we did not see this repeat. While it can be nice to have excellent dispatcher gadgets, those are not necessary, as described elsewhere, with the novel two-gadget dispatcher we introduced.
+**A:** Actually, yes, with VisualStudio 2015,  all of that we found compiled with Developer Prompt had a couple highly desirable dispatcher gadgets that were always present! I was going to include detailed information on this in one talk, but it got cut for time. I may include that separately at a later time. The bad news is we evaluated all binaries made by other editions of Visual Studio for other years, up until about a year ago, and we did not see this repeat. While it can be nice to have excellent dispatcher gadgets, those are not necessary, as described elsewhere, with the novel two-gadget dispatcher we introduced. Additionally, this is not actually a vulnerablity, but just a way to guarantee that JOP would be readily accessible, assuming there was some true vulnerability.
 
+**Q: Is JOP ROCKET a standalone tool? Does it work with a debugger?**
 
-
-
-
+**A:** Yes, it is a standalone tool that is static analysis, and no, it cannot be integrated with a debugger like Mona. There is an option within JOP ROCKET to search through DLLs that it can find, and it can search through those, although obviously most system Windows DLLs will not be usable due to mitigations.  You can have JOP ROCKET exclude or include based on mitigations. Because it is static analysis, although it can optionally search through DLLs, it can miss some that are not found in the IAT or whose locations cannot be easily determined by JOP ROCKET. That is an inherent limitation to static analysis. By default, JOP ROCKET will search just through the image itself, i.e. the .exe, not the DLLs, to save time.
 
