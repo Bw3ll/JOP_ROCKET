@@ -215,7 +215,7 @@ You can see a video of it and him talking about it at the HITB 2021 presentation
 
 **Q: I am an academic researcher and want to do something with JOP as in a paper or presentation. Can I contact you?**
 
-**A:** Sure, you may contact us if you are planning to do a paper or some new project. You can reach me at bramwell.brizendine  AT gmail . I can pass along to Austin if he is interested. We potentially may even be interested in collaborating. Please cite us if you use our research in some way for JOP. Probably the most practical approach to research involving JOP would be in introducing some defenses to JOP or mitigations for it, and we have been contacted before.
+**A:** Sure, you may contact us if you are planning to do a paper or some new project. You can reach me at bramwell.brizendine  AT gmail . I can pass along to Austin if he is interested. We potentially may even be interested in collaborating. Please cite us if you use our research in some way for JOP. Probably the most practical approach to research involving JOP would be in introducing some defenses to JOP or mitigations for it. We have been contacted before.
 
 **Q: Have other people done JOP?**
 
