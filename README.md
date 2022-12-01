@@ -5,6 +5,8 @@
 
 **Update: November 29, 2021: I have uploaded the slides for @Hack in Ryadh and also a white paper on Shellcodeless JOP. The silent demo videos useed in the talk may be found here: https://www.youtube.com/playlist?list=PLynyJsHgQaJ3AfQGKVkeZJ9cWa7mIqDMV**
 
+**Update: December 1, 2022: I have added a Q & A at the end of this GitHub, which includes links to resources (talks and papers).
+
 Current version: 2.15 
 
 The Jump-oriented Programming Reversing Open Cyber Knowledge Expert Tool, or JOP ROCKET, is a tool designed to help facilitate JOP gadget discovery in an x86 Windows environment. This tool was released at DEF CON 27, where it was the subject of a talk by Dr. Bramwell Brizendine and Dr. Josh Stroschein. A major update is under development was released this September, 2020, with minor updates planned in the near future.
@@ -133,4 +135,102 @@ Then, run:
 py -2 -m pip install pywin32
 
 Afterwards, finish the installation by running ...\Python27\Scripts\pywin32_postinstall.py -install
+
+# Q & A
+**Q: What is so special about JOP ROCKET?**
+
+**A:** JOP ROCKET finds all the required gadgets, including the dispatcher gadget. I am not aware of any other tool that searches for dispatcher gadgets. Additionally, it introduces new types of gadgets and innovations to JOP.  JOP ROCKET also can generate a complete JOP chain to bypass DEP using a new variation on the dispatcher gadget paradigm that involves a series of multiple stack pivots. Realistically it would be very difficult to do a JOP exploit using the dispatcher gadget approach without using JOP ROCKET. There are some other ROP tools that may provide more limited JOP gadgets, but they are mostly placeholders for future work, and you could not complete a JOP exploit without some of the gadgets found with JOP ROCKET.
+
+**Q: I think I saw JOP ROCKET at a talk before? Where was it?**
+
+**A:** We have present at several conferences: DEF CON 27 (2019), Wild West Hackin’ Fest (2020), Hack in the Box Amsterdam (2021), Black Hat Asia (2021), and @Hack (2021) (now renamed Black Hat Middle East and Africa). For each of these there is generally a white paper and a video (no video for @Hack). There have been academic conferences as well. Each talk and white paper is different, usually with 60-70% new content at least. They address many different topics on JOP. We have no new talks planned and wouldn’t do another unless we had something new to share, as we don’t like to repeat ourselves. 
+
+Here is a limited listing of some JOP materials. This is not the same talk or paper, as we are constantly evolving and adding new innovations. Each has novel contributions.
+
+DEF CON 27 2019 video: https://www.youtube.com/watch?v=PMihX693mPE
+
+Wild West Hackin’ Fest 2020 video: https://www.youtube.com/watch?v=ZQuxSSBfeHM
+
+Black Hat Asia video: https://www.youtube.com/watch?v=NYgTw-h6GT8
+
+Black Hat Asia paper: https://i.blackhat.com/asia-21/Thursday-Handouts/as-21-Brizendine-Babcock-Prebuilt-Jop-Chains-With-The-Jop-Rocket-wp.pdf
+
+Hack in the Box Amsterdam 2021 video: https://www.youtube.com/watch?v=MxIySXHvKyE
+
+Hack in the Box Amsterdam 2021 paper: http://magazine.hitb.org/wp-content/uploads/2021/06/HITBMag-Issue-12-June-2021-.pdf
+
+High resolution: http://magazine.hitb.org/wp-content/uploads/2021/06/HITBMag-Issue-12-June-2021-Hi-res.pdf
+
+@Hack 2021 (renamed Black Hat Middle East and Africa) paper: https://blackhatmea.com/content-hub/advanced-code-reuse-attacks-jump-oriented-programming
+
+**Q: What is an example of a real-world JOP exploit?**
+
+**A:** Austin published one at Exploit DB: https://www.exploit-db.com/exploits/49959
+
+You can see a video of it and him talking about it at the HITB 2021 presentation we did. That real-world JOP exploit presented some special challenges, so it is good to look at and study. While Austin wrote that by hand, actually the automatic JOP chain generation for JOP ROCKET would have done most of the work. (There still would be additional special setup to compensate for some of the challenges.) This is also an example of our novel variation to the dispatcher gadget approach, using a series of multiple stack pivots. This exploit took less than a day to complete.
+
+**Q: Is JOP hard to do?**
+
+**A:** No, it is not, but it is very different from ROP. There are different “rules” in places that may not be immediately apparent. We write about them extensively in different papers or talk about them in different talks we have done. What can sometimes be challenging, however, is having sufficient gadgets. There are different styles of JOP, and if you are attempting to do the dispatcher-gadget approach – which can allow you to do a complete JOP exploit with no ROP – then you must have a dispatcher gadget. 
+
+**Q: Isn’t JOP just ROP by another name?**
+
+**A:** JOP is very fluid. It can be. You could load a RET into a JOP gadget, and thus whenever you do JMP EBX, for instance, that would be equivalent to the RET. In that sense you could use JOP as just a way to extend ROP, and you wouldn’t need a dispatcher gadget. It would seem tedious to have to build an entire exploit that way, although you could if you really wanted to. We write about other styles of JOP as well, although most of our work concentrates on the dispatcher gadget approach. 
+
+**Q: What is a dispatcher gadget? Is it easily found? What is a two-gadget dispatcher?**
+
+**A:** That was a relatively rare gadget and not always easily found; some binaries would have no viable dispatcher gadgets. Notice the past tense is in play here. We have introduced alternative dispatcher gadgets, and more importantly, a two-gadget dispatcher, which we have written about at the HITB paper. This takes two common gadgets and chains them together, so a dispatcher gadget is no longer rare. One of the required gadgets is so common there are usually variations of it for nearly all registers; and the other is very common, but not as common. There can other practical limitations though as if you using a two-gadget dispatcher, that will tie up another register. (It is possible to switch dispatcher gadgets and registers being used during an exploit, if additional flexibility is needed.)
+
+**Q: Is the two-gadget paradigm built into JOP ROCKET’s automatic JOP chain generation?**
+
+**A:** No, it is not. The automatic JOP chain generation was time consuming to create, and I created two-gadget dispatcher concept after I did this.  I may attempt to add it in at some point, but not in the immediate future. More likely it would only be added if I did a complete rewrite of JOP ROCKET. By default, JOP ROCKET will create different variations of JOP chains for all available registers, even if a traditional dispatcher gadget cannot be found. Thus, it would not take too much effort for someone to go and add their own two-gadget dispatcher. Though one would need to pay attention to registers that need to be protected for the two-gadget dispatcher, as the tool would not automatically do that.
+
+**Q: I want to try to make my own JOP chain? Can I do so?**
+
+**A:** Sure, for tutorial purposes, we have a binary available on the GitHub – two forms of it – with artificially created JOP gadgets – both an easy and a hard version. The hard version has null byte limitations. You might try doing one without automatic JOP chain generation, seeing if you can find your own gadgets. You also could try with automatic JOP chain generation. With automatic JOP chain generation, you have to do additional work when contending with null bytes. I suppose that could be an area for additional work in the future – to automate some of that.
+
+**Q: Why does JOP ROCKET use an older style of Python? Are you going to change it to modern Python?**
+
+**A:** It was created first several years ago, and I had no intention at that time of ever sharing it. I only submitted to DEFCON initially as a fluke. Unfortunately, the differences between the modern and older Python are such that it would be very non-trivial to change JOP ROCKET, and there are many complex functions where the differences would come into play. JOP ROCKET is also very large as well, and I do not necessarily recall of hand all the places where changes would be needed. More likely than not, I would do a complete rewrite of JOP ROCKET, also making parts of it much more modular and compact than it currently is. There are several new features I would like to add if I did so, and I could do some very cool things if I did so. I do not have plans in the immediate future, but it could be in the next one to three years. Never say never though, as sometimes I can rewrite code very quickly. I may make other updates to the current JOP ROCKET during that time, as smaller updates are easier than a complete rewrite. 
+
+**Q: Who is “we”?**
+
+**A:** The creator of JOP ROCKET is Dr. Bramwell Brizendine. This was originally the subject of his doctoral dissertation, but it has grown and changed a lot since that time. One of his students, Austin Babcock, got involved in JOP research as an undergraduate and continued along with it through his MS in Computer Science degree. During that time Austin was a co-author for several papers and co-speaker for several events. Austin has made important contributions to the mechanics of how JOP works. He later joined as a contributor to JOP ROCKET, primarily introducing optimizations and code improvements. Austin has made several JOP exploits. One is on ExploitDB. 
+
+**Q: What are the “newest” things in JOP that you guys have done?**
+
+**A:** Well, there is the two-gadget dispatcher, which thereby makes JOP with numerous binaries, as the dispatcher-gadget is no longer obscure. We also introduced “shellcodeless JOP,” which avoids the need of bypassing DEP and incorporates the functionality of a shellcode directly into a JOP. We do a small bit of that at HITB and more at @Hack 2021 (Black Hat MEA). @Hack was not filmed, although there is a very detailed paper on it. 
+
+**Q: Does JOP ROCKET work with Linux binaries?**
+
+**A:** No, unfortunately it does not. That would be a good project for someone.
+
+**Q: Does JOP ROCKET work with 64-bit binaries?**
+
+**A:** No, not at this time.
+
+**Q: What is the general approach of JOP?**
+
+**A:** Read our papers or watch our talks. We did a tremendous amount of work in expanding what can be done with JOP. There was virtually no documentation on JOP prior to our research, and we created many new practical techniques for JOP.
+
+**Q: I am an academic researcher and want to do something with JOP as in a paper or presentation. Can I contact you?**
+
+**A:** Sure, you may contact us if you are planning to do a paper or some new project. You can reach me at bramwell.brizendine  AT gmail . I can pass along to Austin if he is interested. We potentially may even be interested in collaborating. Please cite us if you use our research in some way for JOP. Probably the most practical approach to research involving JOP would be in introducing some defenses to JOP or mitigations for it, and we have been contacted before.
+
+**Q: Have other people done JOP?**
+
+**A:** It is not common, and prior to our first DEFCON talk, it was extremely rare. We have certainly raised awareness of it a great deal. I have taught it in a doctoral Advanced Software Exploitation course for three years, so dozens of student have created JOP exploits. I don’t know how many people do it in the wild—certainly people can do it now with JOP ROCKET. With the number of talks we have done and papers we have written – coupled with innovations such as the two-gadget dispatcher – there is no reason why anyone skilled with ROP couldn’t pick it up.
+
+**Q: Why was JOP ROCKET necessary?**
+
+**A:** Without JOP ROCKET, you would only discover a fraction of JOP gadgets, and they would be disorganized, so finding something would be like finding a needle in a haystack. Many real-world JOP gadgets are unintended gadgets that are not naturally occurring, so unless you were some kind of very dedicated savant and created your own tooling or scripts, you would miss out on a lot, if you were trying to do a complete JOP exploit free of ROP gadgets. There are also things like dispatcher gadgets, which you would somehow have to magically find on your own, even unintended forms. There is a good reason why JOP was very rare and seldom talked about prior to our work. That is not imply it is commonplace now.
+
+**Q: Can JOP be easier than ROP?**
+
+**A:** Actually, I have heard from some students that JOP is easier than ROP – and it can be – with he right gadget and using our novel approach to the dispatcher gadget with multiple stack pivots. Notice the keyword here is “can be.” This is true only under special circumstances, such as no null byte restrictions and plentiful stack pivot gadgets, and assuming there is a valid dispatcher gadget. 
+
+**Q: Who is JOP for?**
+
+**A:** I think primarily it is for people who are skilled at code-reuse attacks and want to push themselves, attempting something cutting-edge – although not all JOP necessarily needs to be “difficult.” If you can do JOP, that is a badge of honor to wear. If you create a JOP exploit, go post it on ExploitDB and link to JOP ROCKET to help raise awareness. JOP can also be for people who simply want to avoid usage of ROP – there could be a mitigation in place to detect ROP gadgets. JOP is not ROP, and you can do a complete JOP exploit without a single ROP gadget.
+
 
