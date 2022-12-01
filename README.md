@@ -205,7 +205,7 @@ You can see a video of it and him talking about it at the HITB 2021 presentation
 
 **Q: Does JOP ROCKET work with Linux binaries?**
 
-**A:** No, unfortunately it does not. That would be a good project for someone.
+**A:** No, unfortunately it does not. 
 
 **Q: Does JOP ROCKET work with 64-bit binaries?**
 
