@@ -5,7 +5,7 @@
 
 **Update: November 29, 2021: I have uploaded the slides for @Hack in Ryadh and also a white paper on Shellcodeless JOP. The silent demo videos useed in the talk may be found here: https://www.youtube.com/playlist?list=PLynyJsHgQaJ3AfQGKVkeZJ9cWa7mIqDMV**
 
-**Update: December 1, 2022: I have added a Q & A at the end of this GitHub, which includes links to resources (talks and papers).
+**Update: December 1, 2022: I have added a Q & A at the end of this GitHub, which includes links to resources (talks and papers).**
 
 Current version: 2.15 
 
