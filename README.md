@@ -219,7 +219,7 @@ You can see a video of it and him talking about it at the HITB 2021 presentation
 
 **Q: Have other people done JOP?**
 
-**A:** It is not common, and prior to our first DEFCON talk, it was extremely rare. We have certainly raised awareness of it a great deal. I have taught it in a doctoral Advanced Software Exploitation course for three years, so dozens of student have created JOP exploits. I don’t know how many people do it in the wild—certainly people can do it now with JOP ROCKET. With the number of talks we have done and papers we have written – coupled with innovations such as the two-gadget dispatcher – there is no reason why anyone skilled with ROP couldn’t pick it up.
+**A:** It is not common, and prior to our first DEFCON talk, it was extremely rare. We have certainly raised awareness of it a great deal. I previously have taught it in a doctoral Advanced Software Exploitation course for three years, so dozens of student have created JOP exploits. I don’t know how many people do it in the wild—certainly people can do it now with JOP ROCKET. I have also had different undergraduate students do JOP exploits. There is no special reason it has to be a Ph.D. student - anyone with strong competency in exploitation and code-reuse attacks. With the number of talks we have done and papers we have written – coupled with innovations such as the two-gadget dispatcher – there is no reason why anyone skilled with ROP couldn’t pick it up.
 
 **Q: Why was JOP ROCKET necessary?**
 
